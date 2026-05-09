@@ -286,7 +286,7 @@ fluxion repl [script.repl]
 ```text
 src/                 Compiler, type checker, LLVM codegen, JIT, and runtime
 docs/                v0.1 design documents and safety/control notes
-examples/            Reference and runnable Fluxion examples
+examples/            Runnable Fluxion examples
 examples/cpp/        Comparable C++ control example
 tests/valid/         Programs expected to check or run
 tests/invalid/       Programs expected to fail checking
@@ -302,16 +302,14 @@ tests/repl/          Scripted REPL sessions
 - [Control abstractions: PID and MPC](docs/control-abstractions.md)
 - [Standards and safety profiles](docs/standards-and-safety-profiles.md)
 - [C++ versus Fluxion control review](docs/cpp-vs-fluxion-control-review.md)
-- [Reference examples](examples/)
+- [Runnable examples](examples/)
 
 ## Example Programs
 
 - [Cartpole PID](examples/runnable/cartpole_pid.flx)
+- [Cartpole PID/MPC](examples/cartpole_pid_mpc.flx)
 - [Kalman object tracking](examples/kalman_object_tracking.flx)
-- [Kalman object tracking with reactors](examples/kalman_object_tracking_reactors.flx)
-- [Robotics sensor fusion](examples/robotics_sensor_fusion.flx)
-- [Safety profiles](examples/safety_profiles.flx)
-- [Bounded async jobs](examples/bounded_async_jobs.flx)
+- [Runnable Kalman object tracking](examples/runnable/kalman_object_tracking.flx)
 
 ## Contributing
 

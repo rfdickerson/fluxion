@@ -71,7 +71,7 @@ int run_jit(GeneratedModule generated) {
     throw DiagnosticError({"<jit>", 1, 1}, llvm::toString(main_symbol.takeError()));
   }
   using MainFn = int (*)();
-#if LLVM_VERSION_MAJOR >= 18
+#if LLVM_VERSION_MAJOR >= 17
   auto* main_fn = main_symbol->toPtr<MainFn>();
 #else
   auto* main_fn = main_symbol->getAddress().toPtr<MainFn>();

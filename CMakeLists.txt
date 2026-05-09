@@ -14,7 +14,6 @@ message(STATUS "LLVMConfig.cmake: ${LLVM_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 
-include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(fluxion
@@ -27,6 +26,8 @@ add_executable(fluxion
   src/runtime.cpp
   src/typecheck.cpp
 )
+
+target_include_directories(fluxion SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 
 llvm_map_components_to_libnames(LLVM_LIBS
   Core
