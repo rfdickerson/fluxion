@@ -1,0 +1,63 @@
+module Examples.RunnableCartPolePid
+
+struct CartPoleState {
+  stamp: Double,
+  cart_x: Double,
+  cart_v: Double,
+  pole_theta: Double,
+  pole_omega: Double
+}
+
+struct ForceCommand {
+  stamp: Double,
+  newtons: Double
+}
+
+func clamp(x: Double, lo: Double, hi: Double) -> Double =
+  if x < lo then lo else if x > hi then hi else x
+
+func square(x: Double) -> Double =
+  x * x
+
+func pid_force(state: CartPoleState) -> ForceCommand =
+  let kp = 58.0 in
+  let kd = 8.0 in
+  let raw = kp * (0.0 - state.pole_theta) + kd * (0.0 - state.pole_omega) + -1.0 * state.cart_x + -1.8 * state.cart_v in
+  ForceCommand(
+    stamp: state.stamp,
+    newtons: clamp(raw, -20.0, 20.0)
+  )
+
+func cartpole_step(state: CartPoleState, force: Double, dt: Double) -> CartPoleState =
+  let total_mass = 1.1 in
+  let polemass_length = 0.05 in
+  let gravity = 9.80665 in
+  let theta_acc = (gravity * state.pole_theta - force / total_mass) / 0.5 in
+  let x_acc = force / total_mass - polemass_length * theta_acc / total_mass in
+  CartPoleState(
+    stamp: state.stamp + dt,
+    cart_x: state.cart_x + dt * state.cart_v,
+    cart_v: state.cart_v + dt * x_acc,
+    pole_theta: state.pole_theta + dt * state.pole_omega,
+    pole_omega: state.pole_omega + dt * theta_acc
+  )
+
+func main() -> Int =
+  let state = CartPoleState(
+    stamp: 0.0,
+    cart_x: 0.0,
+    cart_v: 0.0,
+    pole_theta: 0.04,
+    pole_omega: 0.0
+  ) in
+  let energy = 0.0 in
+  for i in 0..200 static do
+    let command = pid_force(state) in
+    let shove = viz_cartpole_shove(10.0) in
+    energy = energy + square(command.newtons + shove) * 0.005;
+    state = cartpole_step(state, command.newtons + shove, 0.005);
+    viz_cartpole(state.stamp, state.cart_x, state.pole_theta)
+  in
+    print_f64(state.pole_theta);
+    print_f64(energy);
+    0

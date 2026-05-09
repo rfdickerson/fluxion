@@ -1,0 +1,27 @@
+module Tests.MatrixDimensionsAndUnits
+
+type Meter = Double
+type MeterPerSecond = Double
+type State4 = Matrix[4, 1, Double]
+type Observation2x4 = Matrix[2, 4, Double]
+type Measurement2 = Matrix[2, 1, Double]
+
+struct Pose {
+  x: Meter,
+  y: Meter,
+  vx: MeterPerSecond,
+  vy: MeterPerSecond
+}
+
+func observe(h: Observation2x4, state: State4) -> Measurement2 =
+  h * state
+
+func main() -> Int =
+  let pose = Pose { x: 1.0, y: 2.0, vx: 0.5, vy: 0.25 } in
+  let state = [pose.x; pose.y; pose.vx; pose.vy] in
+  let h =
+    [1.0, 0.0, 0.0, 0.0;
+     0.0, 1.0, 0.0, 0.0] in
+  let z = observe(h, state) in
+  print_matrix(z);
+  0

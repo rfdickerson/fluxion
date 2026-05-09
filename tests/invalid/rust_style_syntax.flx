@@ -1,0 +1,4 @@
+module Tests.RustStyleSyntax
+
+fn main() -> Int =
+  0

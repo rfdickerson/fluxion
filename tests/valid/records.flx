@@ -1,0 +1,9 @@
+module Tests.Records
+
+struct Point { x: Double, y: Double }
+
+func sum(p: Point) -> Double =
+  p.x + p.y
+
+func main() -> Int =
+  if sum(Point(x: 1.5, y: 2.5)) == 4.0 then 0 else 1

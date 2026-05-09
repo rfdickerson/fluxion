@@ -1,0 +1,102 @@
+module Examples.RunnableKalmanObjectTracking
+
+type State4 = Matrix[4, 1, Double]
+type Cov4 = Matrix[4, 4, Double]
+type Measurement2 = Matrix[2, 1, Double]
+type Control2 = Matrix[2, 1, Double]
+type Transition4 = Matrix[4, 4, Double]
+type ControlModel4x2 = Matrix[4, 2, Double]
+type Observation2x4 = Matrix[2, 4, Double]
+type Gain4x2 = Matrix[4, 2, Double]
+
+func transition(dt: Double) -> Transition4 =
+  [1.0, 0.0, dt, 0.0;
+   0.0, 1.0, 0.0, dt;
+   0.0, 0.0, 1.0, 0.0;
+   0.0, 0.0, 0.0, 1.0]
+
+func transition_transpose(dt: Double) -> Transition4 =
+  [1.0, 0.0, 0.0, 0.0;
+   0.0, 1.0, 0.0, 0.0;
+   dt, 0.0, 1.0, 0.0;
+   0.0, dt, 0.0, 1.0]
+
+func control(dt: Double) -> ControlModel4x2 =
+  [0.5 * dt * dt, 0.0;
+   0.0, 0.5 * dt * dt;
+   dt, 0.0;
+   0.0, dt]
+
+func observation() -> Observation2x4 =
+  [1.0, 0.0, 0.0, 0.0;
+   0.0, 1.0, 0.0, 0.0]
+
+func fixed_gain() -> Gain4x2 =
+  [0.62, 0.0;
+   0.0, 0.62;
+   0.18, 0.0;
+   0.0, 0.18]
+
+func identity4() -> Cov4 =
+  [1.0, 0.0, 0.0, 0.0;
+   0.0, 1.0, 0.0, 0.0;
+   0.0, 0.0, 1.0, 0.0;
+   0.0, 0.0, 0.0, 1.0]
+
+func process_noise(dt: Double) -> Cov4 =
+  [0.0025 * dt, 0.0, 0.0, 0.0;
+   0.0, 0.0025 * dt, 0.0, 0.0;
+   0.0, 0.0, 0.01 * dt, 0.0;
+   0.0, 0.0, 0.0, 0.01 * dt]
+
+func acceleration_for_step(i: Int) -> Control2 =
+  if i < 3 then
+    [0.10; 0.00]
+  else
+    [0.00; -0.05]
+
+func measurement_for_step(i: Int) -> Measurement2 =
+  if i == 0 then
+    [0.12; 0.02]
+  else if i == 1 then
+    [0.24; 0.05]
+  else if i == 2 then
+    [0.37; 0.08]
+  else if i == 3 then
+    [0.49; 0.10]
+  else if i == 4 then
+    [0.60; 0.10]
+  else
+    [0.72; 0.11]
+
+func predict_state(state: State4, accel: Control2, dt: Double) -> State4 =
+  transition(dt) * state + control(dt) * accel
+
+func predict_covariance(covariance: Cov4, dt: Double) -> Cov4 =
+  transition(dt) * covariance * transition_transpose(dt) + process_noise(dt)
+
+func correct_state(predicted: State4, measurement: Measurement2) -> State4 =
+  predicted + fixed_gain() * (measurement - observation() * predicted)
+
+func correct_covariance(predicted_covariance: Cov4) -> Cov4 =
+  (identity4() - fixed_gain() * observation()) * predicted_covariance
+
+func main() -> Int =
+  let dt = 0.1 in
+  let state = [0.0; 0.0; 1.0; 0.2] in
+  let covariance =
+    [1.0, 0.0, 0.0, 0.0;
+     0.0, 1.0, 0.0, 0.0;
+     0.0, 0.0, 0.5, 0.0;
+     0.0, 0.0, 0.0, 0.5] in
+  print_string("estimated_state");
+  for i in 0..6 static do
+    let predicted = predict_state(state, acceleration_for_step(i), dt) in
+    let predicted_covariance = predict_covariance(covariance, dt) in
+    state = correct_state(predicted, measurement_for_step(i));
+    covariance = correct_covariance(predicted_covariance);
+    print_matrix(state)
+  in
+    print_string("final_covariance");
+    print_matrix(covariance);
+    0

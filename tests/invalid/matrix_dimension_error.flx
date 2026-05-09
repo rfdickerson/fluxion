@@ -1,0 +1,11 @@
+module Tests.MatrixDimensionError
+
+type State4 = Matrix[4, 1, Double]
+type WrongState = Matrix[3, 1, Double]
+type Observation2x4 = Matrix[2, 4, Double]
+
+func observe(h: Observation2x4, state: WrongState) -> State4 =
+  h * state
+
+func main() -> Int =
+  0

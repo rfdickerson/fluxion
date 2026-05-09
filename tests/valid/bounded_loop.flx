@@ -1,0 +1,8 @@
+module Tests.BoundedLoop
+
+func main() -> Int =
+  let total = 0 in
+  for i in 0..10 static do
+    total = total + i
+  in
+    if total == 45 then 0 else 1

@@ -1,0 +1,10 @@
+module Tests.UnitMismatch
+
+type Meter = Double
+type MeterPerSecond = Double
+
+func move(x: Meter, vx: MeterPerSecond) -> Meter =
+  x + vx
+
+func main() -> Int =
+  0

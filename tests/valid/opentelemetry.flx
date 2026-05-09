@@ -1,0 +1,8 @@
+module Tests.OpenTelemetry
+
+func main() -> Int =
+  let span = otel_span_start("startup") in
+  otel_event_i32("items.processed", 3);
+  otel_event_f64("frame.ms", 16.67);
+  otel_span_end(span);
+  0

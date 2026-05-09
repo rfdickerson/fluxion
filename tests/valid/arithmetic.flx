@@ -1,0 +1,7 @@
+module Tests.Arithmetic
+
+func add(a: Int, b: Int) -> Int =
+  a + b
+
+func main() -> Int =
+  if add(20, 22) == 42 then 0 else 1

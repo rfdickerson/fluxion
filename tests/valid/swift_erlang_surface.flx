@@ -1,0 +1,14 @@
+module Tests.Surface
+
+struct Sample {
+  count: Int,
+  gain: Double,
+  ok: Bool
+}
+
+func scale(sample: Sample) -> Double =
+  if sample.ok then sample.gain * 2.0 else 0.0
+
+func main() -> Int =
+  let sample = Sample(count: 3, gain: 4.5, ok: true) in
+  if scale(sample) == 9.0 then 0 else 1

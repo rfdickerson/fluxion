@@ -1,0 +1,4 @@
+module Tests.TypeError
+
+func main() -> Int =
+  if true then 0.0 else 1

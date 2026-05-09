@@ -1,0 +1,5 @@
+module Tests.OpenTelemetryNameType
+
+func main() -> Int =
+  otel_event_i32(42, 3);
+  0
