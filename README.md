@@ -18,9 +18,12 @@ experimenting in a REPL.
   loops.
 - Dimensioned matrix types such as `Matrix[4, 2, Double]` with compile-time
   checks for addition, subtraction, and multiplication compatibility.
+- Advisory `physics-check` diagnostics for physically modeled programs,
+  including matrix/covariance facts, scalar-unit records, fragile covariance
+  updates, raw inverse usage, and innovation gates.
 - LLVM code generation and ORC JIT execution for programs with
   `func main() -> Int`.
-- `check`, `emit-llvm`, `run`, and `repl` CLI commands.
+- `check`, `physics-check`, `emit-llvm`, `run`, and `repl` CLI commands.
 - Built-in runtime helpers for printing scalars, strings, booleans, and
   matrices.
 - Optional newline-delimited JSON telemetry through `FLUXION_OTEL` or
@@ -103,7 +106,16 @@ directory:
 The cartpole example simulates a small PID controller and prints the final pole
 angle and accumulated control effort.
 
-### 5. Try The REPL
+### 5. Run Physics Checks
+
+```bash
+./cmake-build-fluxion-vm/fluxion physics-check examples/kalman_object_tracking.flx
+```
+
+`physics-check` runs after normal parsing and type checking. It emits advisory
+domain diagnostics for physically modeled code without rejecting the program.
+
+### 6. Try The REPL
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion repl
@@ -129,7 +141,7 @@ Useful REPL commands:
 - `:clear` removes saved declarations.
 - `:quit` exits.
 
-### 6. Emit LLVM IR
+### 7. Emit LLVM IR
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion emit-llvm tests/valid/arithmetic.flx
@@ -137,7 +149,7 @@ Useful REPL commands:
 
 This is useful when working on code generation or verifying the runtime ABI.
 
-### 7. Run The Test Suite
+### 8. Run The Test Suite
 
 ```bash
 ctest --test-dir cmake-build-fluxion-vm --output-on-failure

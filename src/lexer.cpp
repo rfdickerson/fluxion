@@ -61,10 +61,18 @@ Token Lexer::identifier(SourceLocation loc) {
     text.push_back(advance());
   }
   static const std::unordered_map<std::string, TokenKind> keywords = {
-      {"module", TokenKind::Module}, {"struct", TokenKind::Type}, {"type", TokenKind::Type}, {"func", TokenKind::Fn},
-      {"let", TokenKind::Let},       {"in", TokenKind::In},       {"if", TokenKind::If},
-      {"then", TokenKind::Then},     {"else", TokenKind::Else},   {"for", TokenKind::For},
-      {"static", TokenKind::Static}, {"do", TokenKind::Do},       {"true", TokenKind::True},
+      {"module", TokenKind::Module},   {"struct", TokenKind::Type},   {"type", TokenKind::Type},
+      {"func", TokenKind::Fn},         {"let", TokenKind::Let},
+      {"in", TokenKind::In},           {"if", TokenKind::If},         {"then", TokenKind::Then},
+      {"else", TokenKind::Else},       {"for", TokenKind::For},       {"static", TokenKind::Static},
+      {"do", TokenKind::Do},           {"reactor", TokenKind::Reactor}, {"phase", TokenKind::Phase},
+      {"before", TokenKind::Before},   {"after", TokenKind::After},   {"tick", TokenKind::Tick},
+      {"deadline", TokenKind::Deadline}, {"priority", TokenKind::Priority},
+      {"parallel", TokenKind::Parallel}, {"safe", TokenKind::Safe},   {"input", TokenKind::Input},
+      {"output", TokenKind::Output},   {"stream", TokenKind::Stream}, {"sampled", TokenKind::Sampled},
+      {"state", TokenKind::State},     {"region", TokenKind::Region}, {"overflow", TokenKind::Overflow},
+      {"capacity", TokenKind::Capacity}, {"on", TokenKind::On},       {"event", TokenKind::Event},
+      {"init", TokenKind::Init},       {"emit", TokenKind::Emit},     {"true", TokenKind::True},
       {"false", TokenKind::False},
   };
   const auto it = keywords.find(text);
@@ -191,7 +199,9 @@ std::vector<Token> Lexer::lex() {
         tokens.push_back(make(TokenKind::Slash, "/", loc));
         break;
       case '<':
-        if (match('=')) {
+        if (match('-')) {
+          tokens.push_back(make(TokenKind::LeftArrow, "<-", loc));
+        } else if (match('=')) {
           tokens.push_back(make(TokenKind::LessEqual, "<=", loc));
         } else {
           tokens.push_back(make(TokenKind::Less, "<", loc));

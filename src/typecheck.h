@@ -29,6 +29,8 @@ class TypeChecker {
   const RecordDecl& record(const std::string& name, const SourceLocation& loc) const;
   const Parameter& field(const RecordDecl& decl, const std::string& name, const SourceLocation& loc) const;
   void expect(const TypeRef& actual, const TypeRef& expected, const SourceLocation& loc);
+  void check_phases();
+  void check_reactors();
 
   Module module_;
   std::unordered_map<std::string, TypeRef> aliases_;

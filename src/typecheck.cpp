@@ -1,5 +1,7 @@
 #include "typecheck.h"
 
+#include <unordered_set>
+
 namespace fluxion {
 
 TypeChecker::TypeChecker(Module module) : module_(std::move(module)) {}
@@ -41,14 +43,92 @@ CheckedProgram TypeChecker::check() {
     const TypeRef body = check_expr(*fn.body, locals);
     expect(body, fn.return_type, fn.loc);
   }
-  if (!functions_.count("main")) {
+  check_phases();
+  check_reactors();
+  if (module_.reactors.empty() && !functions_.count("main")) {
     throw DiagnosticError({"<module>", 1, 1}, "missing func main() -> Int");
   }
-  const auto& main = functions_.at("main");
-  if (!main.params.empty() || main.result != TypeRef::i32()) {
-    throw DiagnosticError({"<module>", 1, 1}, "main must have type func main() -> Int");
+  if (functions_.count("main")) {
+    const auto& main = functions_.at("main");
+    if (!main.params.empty() || main.result != TypeRef::i32()) {
+      throw DiagnosticError({"<module>", 1, 1}, "main must have type func main() -> Int");
+    }
   }
   return {std::move(module_)};
+}
+
+void TypeChecker::check_phases() {
+  std::unordered_set<std::string> names;
+  for (const auto& phase : module_.phases) {
+    if (!names.insert(phase.name).second) {
+      throw DiagnosticError(phase.loc, "duplicate phase '" + phase.name + "'");
+    }
+  }
+  for (const auto& phase : module_.phases) {
+    if (!phase.related_phase.empty() && !names.count(phase.related_phase)) {
+      throw DiagnosticError(phase.loc, "phase '" + phase.name + "' references unknown phase '" + phase.related_phase + "'");
+    }
+  }
+}
+
+void TypeChecker::check_reactors() {
+  std::unordered_set<std::string> phase_names;
+  for (const auto& phase : module_.phases) {
+    phase_names.insert(phase.name);
+  }
+  std::unordered_set<std::string> reactor_names;
+  for (const auto& reactor : module_.reactors) {
+    if (!reactor_names.insert(reactor.name).second) {
+      throw DiagnosticError(reactor.loc, "duplicate reactor '" + reactor.name + "'");
+    }
+    if (reactor.meta.phase.empty()) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a phase");
+    }
+    if (!phase_names.empty() && !phase_names.count(reactor.meta.phase)) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' uses unknown phase '" + reactor.meta.phase + "'");
+    }
+    if (reactor.meta.tick.empty()) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a tick rate");
+    }
+    if (reactor.meta.deadline.empty()) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a deadline");
+    }
+    if (!reactor.meta.has_priority) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a priority");
+    }
+    std::unordered_set<std::string> names;
+    for (const auto& port : reactor.ports) {
+      if (!names.insert(port.name).second) {
+        throw DiagnosticError(port.loc, "duplicate reactor member '" + port.name + "'");
+      }
+      if (port.type.text.empty()) {
+        throw DiagnosticError(port.loc, "reactor port '" + port.name + "' must declare a payload type");
+      }
+      if (port.kind == ReactorPortDecl::Kind::Stream) {
+        if (port.capacity <= 0) {
+          throw DiagnosticError(port.loc, "stream port '" + port.name + "' must declare positive capacity");
+        }
+        if (port.overflow.empty()) {
+          throw DiagnosticError(port.loc, "stream port '" + port.name + "' must declare overflow policy");
+        }
+      }
+      if (!port.overflow.empty() && port.overflow != "drop_oldest" && port.overflow != "drop_newest" &&
+          port.overflow != "coalesce" && port.overflow != "fault") {
+        throw DiagnosticError(port.loc, "unknown overflow policy '" + port.overflow + "'");
+      }
+    }
+    for (const auto& state : reactor.states) {
+      if (!names.insert(state.name).second) {
+        throw DiagnosticError(state.loc, "duplicate reactor member '" + state.name + "'");
+      }
+      if (state.region.empty()) {
+        throw DiagnosticError(state.loc, "reactor state '" + state.name + "' must declare a region");
+      }
+    }
+    if (reactor.handlers.empty()) {
+      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare at least one handler");
+    }
+  }
 }
 
 const RecordDecl& TypeChecker::record(const std::string& name, const SourceLocation& loc) const {

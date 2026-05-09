@@ -23,6 +23,7 @@ add_executable(fluxion
   src/lexer.cpp
   src/main.cpp
   src/parser.cpp
+  src/physics_check.cpp
   src/runtime.cpp
   src/typecheck.cpp
 )
@@ -33,6 +34,7 @@ llvm_map_components_to_libnames(LLVM_LIBS
   Core
   ExecutionEngine
   OrcJIT
+  OrcTargetProcess
   Support
   Target
   native
@@ -55,6 +57,10 @@ add_test(NAME check_opentelemetry COMMAND fluxion check ${CMAKE_SOURCE_DIR}/test
 add_test(NAME check_swift_erlang_surface COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/valid/swift_erlang_surface.flx)
 add_test(NAME check_matrices COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/valid/matrices.flx)
 add_test(NAME check_matrix_dimensions_and_units COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/valid/matrix_dimensions_and_units.flx)
+add_test(NAME check_core_reactor COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/valid/core_reactor.flx)
+add_test(NAME physics_check_kalman COMMAND fluxion physics-check ${CMAKE_SOURCE_DIR}/examples/kalman_object_tracking.flx)
+add_test(NAME physics_check_units COMMAND fluxion physics-check ${CMAKE_SOURCE_DIR}/tests/valid/matrix_dimensions_and_units.flx)
+add_test(NAME physics_check_lints COMMAND fluxion physics-check ${CMAKE_SOURCE_DIR}/tests/valid/physics_lints.flx)
 add_test(NAME run_arithmetic COMMAND fluxion run ${CMAKE_SOURCE_DIR}/tests/valid/arithmetic.flx)
 add_test(NAME run_swift_erlang_surface COMMAND fluxion run ${CMAKE_SOURCE_DIR}/tests/valid/swift_erlang_surface.flx)
 add_test(NAME run_matrices COMMAND fluxion run ${CMAKE_SOURCE_DIR}/tests/valid/matrices.flx)
@@ -74,10 +80,15 @@ add_test(NAME reject_matrix_dimension_error COMMAND fluxion check ${CMAKE_SOURCE
 add_test(NAME reject_unit_mismatch COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/invalid/unit_mismatch.flx)
 add_test(NAME reject_rust_style_syntax COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/invalid/rust_style_syntax.flx)
 add_test(NAME reject_ragged_matrix COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/invalid/ragged_matrix.flx)
+add_test(NAME reject_core_unknown_phase COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/invalid/core_unknown_phase.flx)
+add_test(NAME reject_core_missing_capacity COMMAND fluxion check ${CMAKE_SOURCE_DIR}/tests/invalid/core_missing_capacity.flx)
 set_tests_properties(run_arithmetic run_cartpole run_cartpole_pid_mpc PROPERTIES WILL_FAIL FALSE)
 set_tests_properties(run_matrices PROPERTIES PASS_REGULAR_EXPRESSION "\\[6 8;")
 set_tests_properties(run_kalman_object_tracking PROPERTIES PASS_REGULAR_EXPRESSION "estimated_state")
 set_tests_properties(run_runnable_kalman_object_tracking PROPERTIES PASS_REGULAR_EXPRESSION "estimated_state")
+set_tests_properties(physics_check_kalman PROPERTIES PASS_REGULAR_EXPRESSION "FXN-COV-003")
+set_tests_properties(physics_check_units PROPERTIES PASS_REGULAR_EXPRESSION "FXN-UNIT-001")
+set_tests_properties(physics_check_lints PROPERTIES PASS_REGULAR_EXPRESSION "FXN-NUM-021.*FXN-STOCH-014")
 set_tests_properties(run_cartpole_pid_mpc PROPERTIES PASS_REGULAR_EXPRESSION "200")
 set_tests_properties(run_cartpole_visualizer PROPERTIES PASS_REGULAR_EXPRESSION "Fluxion cartpole visualizer")
 set_tests_properties(run_opentelemetry PROPERTIES
@@ -87,4 +98,4 @@ set_tests_properties(run_opentelemetry PROPERTIES
 set_tests_properties(repl_basic PROPERTIES PASS_REGULAR_EXPRESSION "3\nok\n42\ntrue\nhello fluxion")
 set_tests_properties(repl_matrix PROPERTIES PASS_REGULAR_EXPRESSION "\\[1 2;")
 set_tests_properties(emit_llvm_opentelemetry PROPERTIES PASS_REGULAR_EXPRESSION "fluxion_otel_span_start")
-set_tests_properties(reject_opentelemetry_name_type reject_type_error reject_matrix_dimension_error reject_unit_mismatch reject_rust_style_syntax reject_ragged_matrix PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(reject_opentelemetry_name_type reject_type_error reject_matrix_dimension_error reject_unit_mismatch reject_rust_style_syntax reject_ragged_matrix reject_core_unknown_phase reject_core_missing_capacity PROPERTIES WILL_FAIL TRUE)

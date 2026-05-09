@@ -20,5 +20,6 @@ extern "C" int fluxion_otel_event_f64(const char* name, double value);
 namespace fluxion {
 
 void set_cartpole_visualizer_enabled(bool enabled);
+void set_pretty_output_enabled(bool enabled);
 
 }  // namespace fluxion

@@ -169,11 +169,72 @@ struct TypeAliasDecl {
   SourceLocation loc;
 };
 
+struct TypeSyntax {
+  std::string text;
+  SourceLocation loc;
+};
+
+struct PhaseDecl {
+  enum class Relation { None, Before, After };
+
+  std::string name;
+  Relation relation = Relation::None;
+  std::string related_phase;
+  SourceLocation loc;
+};
+
+struct ReactorMeta {
+  std::string phase;
+  std::string tick;
+  int priority = 0;
+  bool has_priority = false;
+  std::string deadline;
+  bool parallel_safe = false;
+};
+
+struct ReactorPortDecl {
+  enum class Direction { Input, Output };
+  enum class Kind { Stream, Sampled };
+
+  Direction direction = Direction::Input;
+  std::string name;
+  Kind kind = Kind::Stream;
+  TypeSyntax type;
+  int capacity = -1;
+  std::string overflow;
+  SourceLocation loc;
+};
+
+struct ReactorStateDecl {
+  std::string name;
+  TypeSyntax type;
+  std::string region;
+  SourceLocation loc;
+};
+
+struct ReactorHandlerDecl {
+  std::string target;
+  std::string parameter;
+  std::string body;
+  SourceLocation loc;
+};
+
+struct ReactorDecl {
+  std::string name;
+  ReactorMeta meta;
+  std::vector<ReactorPortDecl> ports;
+  std::vector<ReactorStateDecl> states;
+  std::vector<ReactorHandlerDecl> handlers;
+  SourceLocation loc;
+};
+
 struct Module {
   std::string name;
   std::vector<TypeAliasDecl> aliases;
   std::vector<RecordDecl> records;
   std::vector<FunctionDecl> functions;
+  std::vector<PhaseDecl> phases;
+  std::vector<ReactorDecl> reactors;
 };
 
 }  // namespace fluxion

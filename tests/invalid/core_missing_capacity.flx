@@ -1,0 +1,17 @@
+module Tests.CoreMissingCapacity
+
+phase output
+
+reactor MissingCapacity
+  phase output
+  tick 60.hz
+  priority 1
+  deadline 100.us
+  parallel safe
+{
+  output value:
+    stream Int overflow fault
+
+  on tick(t: Tick) =
+    emit value(1)
+}

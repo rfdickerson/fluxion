@@ -18,29 +18,90 @@
 
 #ifdef _WIN32
 #include <conio.h>
+#include <io.h>
 #else
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
 #endif
 
+namespace {
+
+std::atomic<bool>& pretty_output_enabled() {
+  static std::atomic<bool> pretty_output_enabled{false};
+  return pretty_output_enabled;
+}
+
+bool pretty_output_active() {
+  if (!pretty_output_enabled().load()) {
+    return false;
+  }
+  return true;
+}
+
+bool terminal_color_enabled() {
+  if (!pretty_output_active()) {
+    return false;
+  }
+#ifdef _WIN32
+  if (_isatty(_fileno(stdout)) == 0) {
+    return false;
+  }
+#else
+  if (isatty(fileno(stdout)) == 0) {
+    return false;
+  }
+#endif
+  if (std::getenv("NO_COLOR") != nullptr) {
+    return false;
+  }
+  const char* term = std::getenv("TERM");
+  return term == nullptr || std::string(term) != "dumb";
+}
+
+void set_terminal_pretty_output_enabled(bool enabled) {
+  pretty_output_enabled().store(enabled);
+}
+
+std::string style_text(const std::string& text, const char* code) {
+  if (!terminal_color_enabled()) {
+    return text;
+  }
+  return std::string("\033[") + code + "m" + text + "\033[0m";
+}
+
+std::string format_scalar(double value) {
+  if (std::abs(value) < 5e-13) {
+    value = 0.0;
+  }
+  std::ostringstream out;
+  out << std::setprecision(12) << value;
+  return out.str();
+}
+
+}  // namespace
+
 extern "C" int fluxion_print_f64(double value) {
-  std::cout << value << '\n';
+  if (!pretty_output_active()) {
+    std::cout << value << '\n';
+    return 0;
+  }
+  std::cout << style_text(format_scalar(value), "1;35") << '\n';
   return 0;
 }
 
 extern "C" int fluxion_print_i32(int value) {
-  std::cout << value << '\n';
+  std::cout << style_text(std::to_string(value), "1;35") << '\n';
   return 0;
 }
 
 extern "C" int fluxion_print_bool(bool value) {
-  std::cout << (value ? "true" : "false") << '\n';
+  std::cout << style_text(value ? "true" : "false", value ? "1;32" : "1;31") << '\n';
   return 0;
 }
 
 extern "C" int fluxion_print_string(const char* value) {
-  std::cout << (value == nullptr ? "" : value) << '\n';
+  std::cout << style_text(value == nullptr ? "" : value, "1;33") << '\n';
   return 0;
 }
 
@@ -59,6 +120,49 @@ Matrix* as_matrix(void* matrix) {
 void require_same_shape(const Matrix* lhs, const Matrix* rhs, const char* op) {
   if (lhs == nullptr || rhs == nullptr || lhs->rows != rhs->rows || lhs->cols != rhs->cols) {
     throw std::runtime_error(std::string("matrix shape mismatch in '") + op + "'");
+  }
+}
+
+void print_plain_matrix(const Matrix* m) {
+  std::cout << '[';
+  for (int r = 0; r < m->rows; ++r) {
+    if (r > 0) {
+      std::cout << ";\n ";
+    }
+    for (int c = 0; c < m->cols; ++c) {
+      if (c > 0) {
+        std::cout << ' ';
+      }
+      std::cout << m->values[static_cast<std::size_t>(r * m->cols + c)];
+    }
+  }
+  std::cout << "]\n";
+}
+
+void print_pretty_matrix(const Matrix* m) {
+  std::vector<std::vector<std::string>> cells(static_cast<std::size_t>(m->rows),
+                                              std::vector<std::string>(static_cast<std::size_t>(m->cols)));
+  std::vector<std::size_t> widths(static_cast<std::size_t>(m->cols), 0);
+  for (int r = 0; r < m->rows; ++r) {
+    for (int c = 0; c < m->cols; ++c) {
+      std::string text = format_scalar(m->values[static_cast<std::size_t>(r * m->cols + c)]);
+      widths[static_cast<std::size_t>(c)] = std::max(widths[static_cast<std::size_t>(c)], text.size());
+      cells[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)] = std::move(text);
+    }
+  }
+
+  std::cout << style_text(std::to_string(m->rows) + "x" + std::to_string(m->cols) + " Matrix{Float64}:", "1;36")
+            << '\n';
+  for (int r = 0; r < m->rows; ++r) {
+    std::cout << style_text(r == 0 ? "[" : " ", "2");
+    for (int c = 0; c < m->cols; ++c) {
+      if (c > 0) {
+        std::cout << "  ";
+      }
+      const std::string& cell = cells[static_cast<std::size_t>(r)][static_cast<std::size_t>(c)];
+      std::cout << style_text(std::string(widths[static_cast<std::size_t>(c)] - cell.size(), ' ') + cell, "1;35");
+    }
+    std::cout << style_text(r + 1 == m->rows ? "]" : ";", "2") << '\n';
   }
 }
 
@@ -320,26 +424,26 @@ extern "C" void* fluxion_matrix_mul(void* lhs, void* rhs) {
 extern "C" int fluxion_print_matrix(void* matrix) {
   auto* m = as_matrix(matrix);
   if (m == nullptr) {
-    std::cout << "[]\n";
+    if (!pretty_output_active()) {
+      std::cout << "[]\n";
+      return 0;
+    }
+    std::cout << style_text("[]", "2") << '\n';
     return 0;
   }
-  std::cout << '[';
-  for (int r = 0; r < m->rows; ++r) {
-    if (r > 0) {
-      std::cout << ";\n ";
-    }
-    for (int c = 0; c < m->cols; ++c) {
-      if (c > 0) {
-        std::cout << ' ';
-      }
-      std::cout << m->values[static_cast<std::size_t>(r * m->cols + c)];
-    }
+  if (!pretty_output_active()) {
+    print_plain_matrix(m);
+    return 0;
   }
-  std::cout << "]\n";
+  print_pretty_matrix(m);
   return 0;
 }
 
 namespace fluxion {
+
+void set_pretty_output_enabled(bool enabled) {
+  set_terminal_pretty_output_enabled(enabled);
+}
 
 void set_cartpole_visualizer_enabled(bool enabled) {
   CartPoleVisualizer& visualizer = cartpole_visualizer();

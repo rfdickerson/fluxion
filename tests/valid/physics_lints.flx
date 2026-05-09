@@ -1,0 +1,19 @@
+module Tests.PhysicsLints
+
+type Cov2 = Matrix[2, 2, Double]
+type Measurement2 = Matrix[2, 1, Double]
+
+func matrix_inverse(m: Cov2) -> Cov2 =
+  m
+
+func innovation_norm(innovation: Measurement2) -> Double =
+  5.1
+
+func kalman_gain(s: Cov2) -> Cov2 =
+  matrix_inverse(s)
+
+func accept_measurement(innovation: Measurement2) -> Bool =
+  innovation_norm(innovation) > 5.0
+
+func main() -> Int =
+  0

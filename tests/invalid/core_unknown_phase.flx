@@ -1,0 +1,17 @@
+module Tests.CoreUnknownPhase
+
+phase input
+
+reactor UsesMissingPhase
+  phase dynamics
+  tick 60.hz
+  priority 1
+  deadline 100.us
+  parallel safe
+{
+  output value:
+    stream Int capacity 1 overflow fault
+
+  on tick(t: Tick) =
+    emit value(1)
+}

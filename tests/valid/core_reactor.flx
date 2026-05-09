@@ -1,0 +1,34 @@
+module Tests.CoreReactor
+
+phase input
+phase dynamics after input
+phase output after dynamics
+
+reactor ForceAccumulator
+  phase input
+  tick 240.hz
+  priority 20
+  deadline 200.us
+  parallel safe
+{
+  input external_forces:
+    stream Wrench<World> capacity 32 overflow drop_oldest
+
+  input body:
+    sampled RigidBody.State<World>
+
+  output net_force:
+    stream Wrench<World> capacity 8 overflow fault
+
+  state accumulated:
+    Wrench<World> in region reactor
+
+  on init(ctx: InitCtx) =
+    accumulated <- Wrench.zero<World>()
+
+  on event external_forces(w) =
+    accumulated <- accumulated + w
+
+  on tick(t: Tick) =
+    emit net_force(accumulated)
+}

@@ -11,6 +11,9 @@
 
 namespace fluxion {
 
+extern "C" void llvm_orc_registerEHFrameSectionWrapper();
+extern "C" void llvm_orc_deregisterEHFrameSectionWrapper();
+
 int run_jit(GeneratedModule generated) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -56,6 +59,10 @@ int run_jit(GeneratedModule generated) {
       llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_otel_event_i32), llvm::JITSymbolFlags::Exported);
   symbols[mangle("fluxion_otel_event_f64")] =
       llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_otel_event_f64), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("llvm_orc_registerEHFrameSectionWrapper")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerEHFrameSectionWrapper), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("llvm_orc_deregisterEHFrameSectionWrapper")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_deregisterEHFrameSectionWrapper), llvm::JITSymbolFlags::Exported);
   if (auto err = jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(symbols))) {
     throw DiagnosticError({"<jit>", 1, 1}, llvm::toString(std::move(err)));
   }
