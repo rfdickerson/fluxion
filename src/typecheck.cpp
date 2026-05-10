@@ -1,5 +1,6 @@
 #include "typecheck.h"
 
+#include <cctype>
 #include <unordered_set>
 
 namespace fluxion {
@@ -17,6 +18,48 @@ bool is_builtin_constant(const std::string& name) {
 
 bool is_matching_numeric(const TypeRef& lhs, const TypeRef& rhs) {
   return lhs == rhs && lhs.is_numeric();
+}
+
+std::string design_kind_name(DesignDecl::Kind kind) {
+  switch (kind) {
+    case DesignDecl::Kind::Pipeline:
+      return "pipeline";
+    case DesignDecl::Kind::Runtime:
+      return "runtime";
+    case DesignDecl::Kind::Frame:
+      return "frame";
+    case DesignDecl::Kind::Measurement:
+      return "measurement";
+    case DesignDecl::Kind::Contract:
+      return "contract";
+    case DesignDecl::Kind::Controller:
+      return "controller";
+    case DesignDecl::Kind::Mpc:
+      return "mpc";
+    case DesignDecl::Kind::Cbf:
+      return "cbf";
+    case DesignDecl::Kind::Clf:
+      return "clf";
+    case DesignDecl::Kind::WorldModel:
+      return "world_model";
+    case DesignDecl::Kind::Source:
+      return "source";
+    case DesignDecl::Kind::Effects:
+      return "effects";
+  }
+  return "declaration";
+}
+
+bool contains_word(const std::string& text, const std::string& word) {
+  const std::size_t found = text.find(word);
+  if (found == std::string::npos) {
+    return false;
+  }
+  const bool before = found == 0 || !(std::isalnum(static_cast<unsigned char>(text[found - 1])) || text[found - 1] == '_');
+  const std::size_t after_index = found + word.size();
+  const bool after = after_index >= text.size() ||
+                     !(std::isalnum(static_cast<unsigned char>(text[after_index])) || text[after_index] == '_');
+  return before && after;
 }
 
 }  // namespace
@@ -62,7 +105,24 @@ CheckedProgram TypeChecker::check() {
   }
   check_phases();
   check_reactors();
-  if (module_.reactors.empty() && !functions_.count("main")) {
+  std::unordered_set<std::string> design_names;
+  for (const auto& decl : module_.design_decls) {
+    if (!decl.name.empty() && !design_names.insert(design_kind_name(decl.kind) + ":" + decl.name).second) {
+      throw DiagnosticError(decl.loc, "duplicate " + design_kind_name(decl.kind) + " declaration '" + decl.name + "'");
+    }
+    if (decl.kind == DesignDecl::Kind::Mpc) {
+      if (!contains_word(decl.body, "deadline")) {
+        throw DiagnosticError(decl.loc, "mpc '" + decl.name + "' must declare a solver deadline");
+      }
+      if (!contains_word(decl.body, "on_timeout")) {
+        throw DiagnosticError(decl.loc, "mpc '" + decl.name + "' must declare on_timeout fallback semantics");
+      }
+    }
+    if (decl.kind == DesignDecl::Kind::WorldModel && !contains_word(decl.body, "backend")) {
+      throw DiagnosticError(decl.loc, "world_model '" + decl.name + "' must declare a backend");
+    }
+  }
+  if (module_.reactors.empty() && module_.design_decls.empty() && !functions_.count("main")) {
     throw DiagnosticError({"<module>", 1, 1}, "missing func main() -> Int");
   }
   if (functions_.count("main")) {
@@ -123,6 +183,12 @@ void TypeChecker::check_reactors() {
       if (!port.overflow.empty() && port.overflow != "drop_oldest" && port.overflow != "drop_newest" &&
           port.overflow != "coalesce" && port.overflow != "fault") {
         throw DiagnosticError(port.loc, "unknown overflow policy '" + port.overflow + "'");
+      }
+      if (!port.history.empty() && port.kind != ReactorPortDecl::Kind::Stream) {
+        throw DiagnosticError(port.loc, "history is only valid on stream ports");
+      }
+      if (!port.max_age.empty() && port.direction != ReactorPortDecl::Direction::Input) {
+        throw DiagnosticError(port.loc, "max_age is only valid on input ports");
       }
     }
     for (const auto& state : reactor.states) {

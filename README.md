@@ -33,6 +33,10 @@ experimenting in a REPL.
 - A v0.1 language specification covering the larger design direction:
   deterministic scheduling, reactors, streams, explicit regions, bounded
   queues, host interop, and safety profiles.
+- Draft language-surface support for CPS/MPC concepts: `latest<T>` freshness,
+  bounded stream `history`, `pipeline`, `runtime`, `measurement`, `contract`,
+  `world_model`, `mpc`, `cbf`, and `clf` declarations. These parse and receive
+  early semantic checks, but solver/runtime execution is still design-stage.
 
 ## Project Status
 

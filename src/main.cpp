@@ -691,6 +691,19 @@ class SimpleReactorSimulator {
     return value;
   }
 
+  static bool is_sim_name_token(fluxion::TokenKind kind) {
+    return kind == fluxion::TokenKind::Identifier || kind == fluxion::TokenKind::State ||
+           kind == fluxion::TokenKind::Output || kind == fluxion::TokenKind::Input ||
+           kind == fluxion::TokenKind::Tick || kind == fluxion::TokenKind::Stream ||
+           kind == fluxion::TokenKind::Sampled || kind == fluxion::TokenKind::Latest ||
+           kind == fluxion::TokenKind::History || kind == fluxion::TokenKind::MaxAge ||
+           kind == fluxion::TokenKind::Measurement || kind == fluxion::TokenKind::Source ||
+           kind == fluxion::TokenKind::Controller || kind == fluxion::TokenKind::Mpc ||
+           kind == fluxion::TokenKind::WorldModel || kind == fluxion::TokenKind::Contract ||
+           kind == fluxion::TokenKind::Constraint || kind == fluxion::TokenKind::Assume ||
+           kind == fluxion::TokenKind::Guarantee || kind == fluxion::TokenKind::Invariant;
+  }
+
   long long parse_primary(const ReactorInstance& instance,
                           const std::vector<fluxion::Token>& tokens,
                           std::size_t& pos,
@@ -706,9 +719,7 @@ class SimpleReactorSimulator {
       }
       return std::stoll(text);
     }
-    if (tokens[pos].kind == fluxion::TokenKind::Identifier || tokens[pos].kind == fluxion::TokenKind::State ||
-        tokens[pos].kind == fluxion::TokenKind::Output || tokens[pos].kind == fluxion::TokenKind::Input ||
-        tokens[pos].kind == fluxion::TokenKind::Tick) {
+    if (is_sim_name_token(tokens[pos].kind)) {
       const std::string name = tokens[pos++].text;
       const auto it = instance.values.find(name);
       if (it == instance.values.end()) {
@@ -735,8 +746,7 @@ class SimpleReactorSimulator {
       ++pos;
     }
     while (tokens[pos].kind != fluxion::TokenKind::End && tokens[pos].kind != fluxion::TokenKind::RBrace) {
-      if (tokens[pos].kind != fluxion::TokenKind::Identifier && tokens[pos].kind != fluxion::TokenKind::State &&
-          tokens[pos].kind != fluxion::TokenKind::Output && tokens[pos].kind != fluxion::TokenKind::Input) {
+      if (!is_sim_name_token(tokens[pos].kind)) {
         throw fluxion::DiagnosticError(loc, "expected assignment in tick body");
       }
       const std::string target = tokens[pos++].text;
@@ -750,9 +760,7 @@ class SimpleReactorSimulator {
       const std::size_t expr_begin = pos;
       while (tokens[pos].kind != fluxion::TokenKind::End && tokens[pos].kind != fluxion::TokenKind::RBrace &&
              tokens[pos].kind != fluxion::TokenKind::Semicolon) {
-        if ((tokens[pos].kind == fluxion::TokenKind::Identifier || tokens[pos].kind == fluxion::TokenKind::State ||
-             tokens[pos].kind == fluxion::TokenKind::Output || tokens[pos].kind == fluxion::TokenKind::Input) &&
-            tokens[pos + 1].kind == fluxion::TokenKind::Assign) {
+        if (is_sim_name_token(tokens[pos].kind) && tokens[pos + 1].kind == fluxion::TokenKind::Assign) {
           break;
         }
         ++pos;
@@ -980,6 +988,19 @@ class NativeReactorBuilder {
     return std::find(reactor.members.begin(), reactor.members.end(), name) != reactor.members.end();
   }
 
+  static bool is_reactor_name_token(fluxion::TokenKind kind) {
+    return kind == fluxion::TokenKind::Identifier || kind == fluxion::TokenKind::State ||
+           kind == fluxion::TokenKind::Output || kind == fluxion::TokenKind::Input ||
+           kind == fluxion::TokenKind::Stream || kind == fluxion::TokenKind::Sampled ||
+           kind == fluxion::TokenKind::Latest || kind == fluxion::TokenKind::History ||
+           kind == fluxion::TokenKind::MaxAge || kind == fluxion::TokenKind::Measurement ||
+           kind == fluxion::TokenKind::Source || kind == fluxion::TokenKind::Controller ||
+           kind == fluxion::TokenKind::Mpc || kind == fluxion::TokenKind::WorldModel ||
+           kind == fluxion::TokenKind::Contract || kind == fluxion::TokenKind::Constraint ||
+           kind == fluxion::TokenKind::Assume || kind == fluxion::TokenKind::Guarantee ||
+           kind == fluxion::TokenKind::Invariant;
+  }
+
   std::string emit_cpp_expr(const ReactorInfo& reactor,
                             const std::vector<fluxion::Token>& tokens,
                             std::size_t begin,
@@ -989,8 +1010,7 @@ class NativeReactorBuilder {
     for (std::size_t i = begin; i < end; ++i) {
       const auto kind = tokens[i].kind;
       std::string text = tokens[i].text;
-      if (kind == fluxion::TokenKind::Identifier || kind == fluxion::TokenKind::State ||
-          kind == fluxion::TokenKind::Output || kind == fluxion::TokenKind::Input) {
+      if (is_reactor_name_token(kind)) {
         if (!is_member(reactor, text)) {
           throw fluxion::DiagnosticError(loc, "native reactor build cannot resolve variable '" + text + "'");
         }
@@ -1023,8 +1043,7 @@ class NativeReactorBuilder {
       ++pos;
     }
     while (tokens[pos].kind != fluxion::TokenKind::End && tokens[pos].kind != fluxion::TokenKind::RBrace) {
-      if (tokens[pos].kind != fluxion::TokenKind::Identifier && tokens[pos].kind != fluxion::TokenKind::State &&
-          tokens[pos].kind != fluxion::TokenKind::Output && tokens[pos].kind != fluxion::TokenKind::Input) {
+      if (!is_reactor_name_token(tokens[pos].kind)) {
         throw fluxion::DiagnosticError(decl.loc, "native reactor build expected assignment in tick body");
       }
       const std::string target = tokens[pos++].text;
@@ -1038,9 +1057,7 @@ class NativeReactorBuilder {
       const std::size_t expr_begin = pos;
       while (tokens[pos].kind != fluxion::TokenKind::End && tokens[pos].kind != fluxion::TokenKind::RBrace &&
              tokens[pos].kind != fluxion::TokenKind::Semicolon) {
-        if ((tokens[pos].kind == fluxion::TokenKind::Identifier || tokens[pos].kind == fluxion::TokenKind::State ||
-             tokens[pos].kind == fluxion::TokenKind::Output || tokens[pos].kind == fluxion::TokenKind::Input) &&
-            tokens[pos + 1].kind == fluxion::TokenKind::Assign) {
+        if (is_reactor_name_token(tokens[pos].kind) && tokens[pos + 1].kind == fluxion::TokenKind::Assign) {
           break;
         }
         ++pos;

@@ -194,7 +194,7 @@ struct ReactorMeta {
 
 struct ReactorPortDecl {
   enum class Direction { Input, Output };
-  enum class Kind { Stream, Sampled };
+  enum class Kind { Stream, Sampled, Latest };
 
   Direction direction = Direction::Input;
   std::string name;
@@ -202,6 +202,8 @@ struct ReactorPortDecl {
   TypeSyntax type;
   int capacity = -1;
   std::string overflow;
+  std::string history;
+  std::string max_age;
   SourceLocation loc;
 };
 
@@ -229,6 +231,29 @@ struct ReactorDecl {
   SourceLocation loc;
 };
 
+struct DesignDecl {
+  enum class Kind {
+    Pipeline,
+    Runtime,
+    Frame,
+    Measurement,
+    Contract,
+    Controller,
+    Mpc,
+    Cbf,
+    Clf,
+    WorldModel,
+    Source,
+    Effects
+  };
+
+  Kind kind = Kind::Pipeline;
+  std::string name;
+  std::string signature;
+  std::string body;
+  SourceLocation loc;
+};
+
 struct Module {
   std::string name;
   std::vector<TypeAliasDecl> aliases;
@@ -236,6 +261,7 @@ struct Module {
   std::vector<FunctionDecl> functions;
   std::vector<PhaseDecl> phases;
   std::vector<ReactorDecl> reactors;
+  std::vector<DesignDecl> design_decls;
 };
 
 }  // namespace fluxion

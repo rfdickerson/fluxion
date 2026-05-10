@@ -29,8 +29,14 @@ class Parser {
   ReactorPortDecl parse_reactor_port(ReactorPortDecl::Direction direction);
   ReactorStateDecl parse_reactor_state();
   ReactorHandlerDecl parse_reactor_handler();
+  DesignDecl parse_design_decl(DesignDecl::Kind kind, TokenKind keyword, bool requires_name);
   std::string parse_dotted_measure();
+  std::string collect_balanced_block();
+  std::string collect_design_signature_until_body();
+  std::string collect_design_expression_body(int item_column);
+  std::string append_token_text(std::string body, const Token& token) const;
   std::string collect_handler_body(int item_column);
+  bool is_module_item_start() const;
   bool is_reactor_item_start() const;
   RecordDecl parse_record_decl();
   FunctionDecl parse_function_decl();

@@ -1,0 +1,82 @@
+module Tests.MpcLanguageSurface
+
+phase sensor
+phase estimation after sensor
+phase guidance after estimation
+phase control after guidance
+
+runtime Realtime {
+  scheduler static_priority
+  allocation no_heap_after_init
+  queues bounded
+  replay deterministic
+}
+
+frame World
+frame Body
+
+measurement Position2D<World> {
+  stamp: time
+  value: Vec2<Meter, World>
+  noise: Gaussian<Vec2<Meter, World>>
+  source: Camera
+}
+
+world_model TerrainPredictor {
+  backend onnx "terrain_model.onnx"
+}
+
+cbf CollisionAvoidance(state) =
+  distance(state.position, obstacle.position)^2 - safe_radius^2
+
+clf Stability(state) =
+  squared_norm(state.position - target.position)
+
+mpc RoverController {
+  model TerrainPredictor
+
+  horizon 5.s
+  step 50.ms
+
+  minimize TrackingError + 0.2 * EnergyUse
+
+  subject_to {
+    CollisionAvoidance
+    rollover_probability < 0.001
+  }
+
+  deadline 4.ms
+  on_timeout use previous_solution
+  on_stale_state enter hold_position
+  on_infeasible degrade_to safe_abort
+}
+
+contract {
+  assume estimate.age < 20.ms
+  guarantee command.rate == 50.hz
+  invariant covariance is positive_semidefinite
+}
+
+pipeline Rover {
+  sensor -> estimation -> guidance -> control
+}
+
+reactor DockingMPC in guidance every 20.hz {
+  deadline 5.ms
+
+  input estimate: latest<StateEstimate> max_age 20.ms
+  input target: latest<DockingTarget> max_age 100.ms
+  input telemetry: stream<TelemetrySample> {
+    capacity 128
+    overflow drop_oldest
+    history 5.s
+  }
+
+  output command: stream<ThrusterCommand> capacity 8 overflow fault
+
+  state previous_solution:
+    MpcSolution in region reactor
+
+  on tick(t: Tick) =
+    emit command(previous_solution.first_control)
+}

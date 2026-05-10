@@ -17,6 +17,14 @@ bool Parser::is_name_token(TokenKind kind) const {
   return kind == TokenKind::Identifier || kind == TokenKind::Input || kind == TokenKind::Output ||
          kind == TokenKind::Event || kind == TokenKind::Init || kind == TokenKind::Tick || kind == TokenKind::Phase ||
          kind == TokenKind::State || kind == TokenKind::Stream || kind == TokenKind::Sampled ||
+         kind == TokenKind::Latest || kind == TokenKind::History || kind == TokenKind::Every ||
+         kind == TokenKind::MaxAge || kind == TokenKind::Pipeline || kind == TokenKind::Runtime ||
+         kind == TokenKind::Frame || kind == TokenKind::Measurement || kind == TokenKind::Contract ||
+         kind == TokenKind::Controller || kind == TokenKind::Mpc || kind == TokenKind::Cbf ||
+         kind == TokenKind::Clf || kind == TokenKind::WorldModel || kind == TokenKind::Source ||
+         kind == TokenKind::Effects || kind == TokenKind::Constraint || kind == TokenKind::Assume ||
+         kind == TokenKind::Guarantee || kind == TokenKind::Invariant || kind == TokenKind::OnTimeout ||
+         kind == TokenKind::OnStaleState || kind == TokenKind::OnInfeasible ||
          kind == TokenKind::Region || kind == TokenKind::Reactor || kind == TokenKind::Before ||
          kind == TokenKind::After || kind == TokenKind::Safe || kind == TokenKind::Capacity ||
          kind == TokenKind::Overflow || kind == TokenKind::Deadline || kind == TokenKind::Priority ||
@@ -54,8 +62,30 @@ Module Parser::parse_module() {
       module.phases.push_back(parse_phase_decl());
     } else if (check(TokenKind::Reactor)) {
       module.reactors.push_back(parse_reactor_decl());
+    } else if (check(TokenKind::Pipeline)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Pipeline, TokenKind::Pipeline, true));
+    } else if (check(TokenKind::Runtime)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Runtime, TokenKind::Runtime, true));
+    } else if (check(TokenKind::Frame)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Frame, TokenKind::Frame, true));
+    } else if (check(TokenKind::Measurement)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Measurement, TokenKind::Measurement, true));
+    } else if (check(TokenKind::Contract)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Contract, TokenKind::Contract, false));
+    } else if (check(TokenKind::Controller)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Controller, TokenKind::Controller, true));
+    } else if (check(TokenKind::Mpc)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Mpc, TokenKind::Mpc, true));
+    } else if (check(TokenKind::Cbf)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Cbf, TokenKind::Cbf, true));
+    } else if (check(TokenKind::Clf)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Clf, TokenKind::Clf, true));
+    } else if (check(TokenKind::WorldModel)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::WorldModel, TokenKind::WorldModel, true));
+    } else if (check(TokenKind::Source)) {
+      module.design_decls.push_back(parse_design_decl(DesignDecl::Kind::Source, TokenKind::Source, true));
     } else {
-      throw DiagnosticError(peek().loc, "expected type, function, phase, or reactor declaration");
+      throw DiagnosticError(peek().loc, "expected type, function, phase, reactor, pipeline, runtime, contract, model, or control declaration");
     }
   }
   return module;
@@ -116,8 +146,9 @@ TypeSyntax Parser::parse_type_syntax_until_reactor_clause() {
   while (!check(TokenKind::End)) {
     if (angle_depth == 0 &&
         (check(TokenKind::Capacity) || check(TokenKind::Overflow) || check(TokenKind::In) || check(TokenKind::Assign) ||
+         check(TokenKind::History) || check(TokenKind::MaxAge) ||
          check(TokenKind::Input) || check(TokenKind::Output) || check(TokenKind::State) || check(TokenKind::On) ||
-         check(TokenKind::Tick) || check(TokenKind::RBrace))) {
+         check(TokenKind::Tick) || check(TokenKind::Deadline) || check(TokenKind::RBrace))) {
       break;
     }
     Token token = peek();
@@ -202,6 +233,114 @@ std::string Parser::parse_dotted_measure() {
   return text;
 }
 
+std::string Parser::append_token_text(std::string body, const Token& token) const {
+  if (!body.empty() && token.kind != TokenKind::Dot && token.kind != TokenKind::Comma && token.kind != TokenKind::RParen &&
+      token.kind != TokenKind::RBracket && token.kind != TokenKind::RBrace && token.kind != TokenKind::Semicolon) {
+    body += " ";
+  }
+  body += token.text;
+  return body;
+}
+
+std::string Parser::collect_balanced_block() {
+  consume(TokenKind::LBrace, "expected '{'");
+  std::string body = "{";
+  int depth = 1;
+  while (!check(TokenKind::End) && depth > 0) {
+    Token token = peek();
+    ++pos_;
+    body = append_token_text(std::move(body), token);
+    if (token.kind == TokenKind::LBrace) {
+      ++depth;
+    } else if (token.kind == TokenKind::RBrace) {
+      --depth;
+    }
+  }
+  if (depth != 0) {
+    throw DiagnosticError(peek().loc, "expected '}' to close declaration body");
+  }
+  return body;
+}
+
+std::string Parser::collect_design_signature_until_body() {
+  std::string signature;
+  int paren_depth = 0;
+  int bracket_depth = 0;
+  while (!check(TokenKind::End)) {
+    if ((check(TokenKind::LBrace) || check(TokenKind::Assign)) && paren_depth == 0 && bracket_depth == 0) {
+      break;
+    }
+    Token token = peek();
+    ++pos_;
+    signature = append_token_text(std::move(signature), token);
+    if (token.kind == TokenKind::LParen) {
+      ++paren_depth;
+    } else if (token.kind == TokenKind::RParen && paren_depth > 0) {
+      --paren_depth;
+    } else if (token.kind == TokenKind::LBracket) {
+      ++bracket_depth;
+    } else if (token.kind == TokenKind::RBracket && bracket_depth > 0) {
+      --bracket_depth;
+    }
+  }
+  return signature;
+}
+
+bool Parser::is_module_item_start() const {
+  return check(TokenKind::Type) || check(TokenKind::Fn) || check(TokenKind::Phase) || check(TokenKind::Reactor) ||
+         check(TokenKind::Pipeline) || check(TokenKind::Runtime) || check(TokenKind::Frame) ||
+         check(TokenKind::Measurement) || check(TokenKind::Contract) || check(TokenKind::Controller) ||
+         check(TokenKind::Mpc) || check(TokenKind::Cbf) || check(TokenKind::Clf) || check(TokenKind::WorldModel) ||
+         check(TokenKind::Source);
+}
+
+std::string Parser::collect_design_expression_body(int item_column) {
+  std::string body;
+  int paren_depth = 0;
+  int bracket_depth = 0;
+  while (!check(TokenKind::End)) {
+    if (peek().loc.column <= item_column && paren_depth == 0 && bracket_depth == 0 && is_module_item_start()) {
+      break;
+    }
+    Token token = peek();
+    ++pos_;
+    body = append_token_text(std::move(body), token);
+    if (token.kind == TokenKind::LParen) {
+      ++paren_depth;
+    } else if (token.kind == TokenKind::RParen && paren_depth > 0) {
+      --paren_depth;
+    } else if (token.kind == TokenKind::LBracket) {
+      ++bracket_depth;
+    } else if (token.kind == TokenKind::RBracket && bracket_depth > 0) {
+      --bracket_depth;
+    }
+  }
+  return body;
+}
+
+DesignDecl Parser::parse_design_decl(DesignDecl::Kind kind, TokenKind keyword, bool requires_name) {
+  const Token& start = consume(keyword, "expected declaration keyword");
+  DesignDecl decl;
+  decl.kind = kind;
+  decl.loc = start.loc;
+  if (requires_name) {
+    const Token& name = consume_name("expected declaration name");
+    decl.name = name.text;
+  } else if (!check(TokenKind::LBrace)) {
+    decl.name = consume_name("expected declaration name").text;
+  }
+  decl.signature = collect_design_signature_until_body();
+  if (match(TokenKind::Assign)) {
+    decl.body = collect_design_expression_body(start.loc.column);
+  } else {
+    decl.body = collect_balanced_block();
+  }
+  if (decl.body.empty()) {
+    throw DiagnosticError(start.loc, "declaration body must not be empty");
+  }
+  return decl;
+}
+
 ReactorDecl Parser::parse_reactor_decl() {
   consume(TokenKind::Reactor, "expected 'reactor'");
   const Token& name = consume_name("expected reactor name");
@@ -237,6 +376,10 @@ ReactorDecl Parser::parse_reactor_decl() {
   while (!check(TokenKind::LBrace)) {
     if (match(TokenKind::Phase)) {
       reactor.meta.phase = consume_name("expected phase name").text;
+    } else if (match(TokenKind::In)) {
+      reactor.meta.phase = consume_name("expected phase name").text;
+    } else if (match(TokenKind::Every)) {
+      reactor.meta.tick = parse_dotted_measure();
     } else if (match(TokenKind::Tick)) {
       reactor.meta.tick = parse_dotted_measure();
     } else if (match(TokenKind::Priority)) {
@@ -263,6 +406,8 @@ ReactorDecl Parser::parse_reactor_decl() {
       reactor.ports.push_back(parse_reactor_port(ReactorPortDecl::Direction::Output));
     } else if (check(TokenKind::State)) {
       reactor.states.push_back(parse_reactor_state());
+    } else if (match(TokenKind::Deadline)) {
+      reactor.meta.deadline = parse_dotted_measure();
     } else if (check(TokenKind::On)) {
       reactor.handlers.push_back(parse_reactor_handler());
     } else if (check(TokenKind::Tick)) {
@@ -296,11 +441,19 @@ ReactorPortDecl Parser::parse_reactor_port(ReactorPortDecl::Direction direction)
     port.kind = ReactorPortDecl::Kind::Stream;
   } else if (match(TokenKind::Sampled)) {
     port.kind = ReactorPortDecl::Kind::Sampled;
+  } else if (match(TokenKind::Latest)) {
+    port.kind = ReactorPortDecl::Kind::Latest;
   } else {
     port.kind = ReactorPortDecl::Kind::Sampled;
   }
-  port.type = parse_type_syntax_until_reactor_clause();
-  while (check(TokenKind::Capacity) || check(TokenKind::Overflow)) {
+  if (match(TokenKind::Less)) {
+    port.type = parse_type_syntax_until(TokenKind::Greater);
+    consume(TokenKind::Greater, "expected '>' after port type");
+  } else {
+    port.type = parse_type_syntax_until_reactor_clause();
+  }
+  while (check(TokenKind::Capacity) || check(TokenKind::Overflow) || check(TokenKind::History) || check(TokenKind::MaxAge) ||
+         check(TokenKind::LBrace)) {
     if (match(TokenKind::Capacity)) {
       const Token& capacity = consume(TokenKind::Number, "expected stream capacity");
       if (capacity.text.find('.') != std::string::npos) {
@@ -309,6 +462,29 @@ ReactorPortDecl Parser::parse_reactor_port(ReactorPortDecl::Direction direction)
       port.capacity = std::stoi(capacity.text);
     } else if (match(TokenKind::Overflow)) {
       port.overflow = consume_name("expected overflow policy").text;
+    } else if (match(TokenKind::History)) {
+      port.history = parse_dotted_measure();
+    } else if (match(TokenKind::MaxAge)) {
+      port.max_age = parse_dotted_measure();
+    } else if (match(TokenKind::LBrace)) {
+      while (!check(TokenKind::RBrace) && !check(TokenKind::End)) {
+        if (match(TokenKind::Capacity)) {
+          const Token& capacity = consume(TokenKind::Number, "expected stream capacity");
+          if (capacity.text.find('.') != std::string::npos) {
+            throw DiagnosticError(capacity.loc, "capacity must be an integer");
+          }
+          port.capacity = std::stoi(capacity.text);
+        } else if (match(TokenKind::Overflow)) {
+          port.overflow = consume_name("expected overflow policy").text;
+        } else if (match(TokenKind::History)) {
+          port.history = parse_dotted_measure();
+        } else if (match(TokenKind::MaxAge)) {
+          port.max_age = parse_dotted_measure();
+        } else {
+          throw DiagnosticError(peek().loc, "expected port capacity, overflow, history, or max_age");
+        }
+      }
+      consume(TokenKind::RBrace, "expected '}' after port attributes");
     }
   }
   return port;
@@ -348,7 +524,7 @@ ReactorStateDecl Parser::parse_reactor_state() {
 
 bool Parser::is_reactor_item_start() const {
   return check(TokenKind::Input) || check(TokenKind::Output) || check(TokenKind::State) || check(TokenKind::On) ||
-         check(TokenKind::Tick);
+         check(TokenKind::Tick) || check(TokenKind::Deadline);
 }
 
 std::string Parser::collect_handler_body(int item_column) {
