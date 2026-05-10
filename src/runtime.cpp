@@ -689,6 +689,7 @@ struct DeterministicReactorRuntime::Impl {
   std::vector<ScheduledReactor> reactors;
   std::vector<std::function<void()>> jobs;
   std::unique_ptr<BoundedWorkerPool> workers;
+  std::uint64_t next_tick = 0;
   bool initialized = false;
 };
 
@@ -732,7 +733,8 @@ void DeterministicReactorRuntime::run_ticks(std::uint64_t count,
   if (!impl_->initialized) {
     initialize();
   }
-  for (std::uint64_t tick = 0; tick < count; ++tick) {
+  for (std::uint64_t local_tick = 0; local_tick < count; ++local_tick) {
+    const std::uint64_t tick = impl_->next_tick++;
     impl_->jobs.clear();
     for (std::size_t i = 0; i < impl_->reactors.size(); ++i) {
       ScheduledReactor& reactor = impl_->reactors[i];

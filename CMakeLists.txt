@@ -30,6 +30,14 @@ add_executable(fluxion
 
 target_include_directories(fluxion SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 
+add_executable(fluxion-lsp
+  src/ast.cpp
+  src/lexer.cpp
+  src/lsp.cpp
+  src/parser.cpp
+  src/typecheck.cpp
+)
+
 llvm_map_components_to_libnames(LLVM_LIBS
   Core
   ExecutionEngine
@@ -44,8 +52,10 @@ target_link_libraries(fluxion PRIVATE ${LLVM_LIBS})
 
 if (MSVC)
   target_compile_options(fluxion PRIVATE /W4 /EHsc)
+  target_compile_options(fluxion-lsp PRIVATE /W4 /EHsc)
 else()
   target_compile_options(fluxion PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(fluxion-lsp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 enable_testing()
@@ -85,6 +95,11 @@ add_test(NAME build_counter_reactor_native_o0
           -o ${CMAKE_BINARY_DIR}/counter_reactor_native_o0${CMAKE_EXECUTABLE_SUFFIX}
           -O0 --for 30.ms)
 add_test(NAME run_counter_reactor_native_o0 COMMAND ${CMAKE_BINARY_DIR}/counter_reactor_native_o0${CMAKE_EXECUTABLE_SUFFIX})
+add_test(NAME build_pid_controller_native
+  COMMAND fluxion build ${CMAKE_SOURCE_DIR}/examples/valid/pid_controller.flx
+          -o ${CMAKE_BINARY_DIR}/pid_controller_native${CMAKE_EXECUTABLE_SUFFIX}
+          -O2 --for 50.ms)
+add_test(NAME run_pid_controller_native COMMAND ${CMAKE_BINARY_DIR}/pid_controller_native${CMAKE_EXECUTABLE_SUFFIX})
 add_test(NAME repl_basic COMMAND fluxion repl ${CMAKE_SOURCE_DIR}/tests/repl/basic.repl)
 add_test(NAME repl_matrix COMMAND fluxion repl ${CMAKE_SOURCE_DIR}/tests/repl/matrix.repl)
 add_test(NAME repl_control_lab COMMAND fluxion repl ${CMAKE_SOURCE_DIR}/tests/repl/control_lab.repl)
@@ -124,6 +139,14 @@ set_tests_properties(build_counter_reactor_native_o0 PROPERTIES
 set_tests_properties(run_counter_reactor_native_o0 PROPERTIES
   FIXTURES_REQUIRED counter_reactor_native_o0
   PASS_REGULAR_EXPRESSION "t=0ms    y=1.*t=10ms    y=2.*t=20ms    y=3"
+)
+set_tests_properties(build_pid_controller_native PROPERTIES
+  FIXTURES_SETUP pid_controller_native
+  PASS_REGULAR_EXPRESSION "built .*pid_controller_native.*-O2"
+)
+set_tests_properties(run_pid_controller_native PROPERTIES
+  FIXTURES_REQUIRED pid_controller_native
+  PASS_REGULAR_EXPRESSION "t=0ms    command=40    measured=4.*t=40ms    command=69    measured=22"
 )
 set_tests_properties(run_opentelemetry PROPERTIES
   ENVIRONMENT FLUXION_OTEL=stdout

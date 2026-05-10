@@ -866,7 +866,7 @@ class NativeReactorBuilder {
                        std::string input_path,
                        fluxion::ReactorRuntimeOptions runtime_options,
                        std::string optimization_level,
-                       double duration_seconds)
+                       std::optional<double> duration_seconds)
       : checked_(checked),
         input_path_(std::move(input_path)),
         runtime_options_(std::move(runtime_options)),
@@ -906,7 +906,7 @@ class NativeReactorBuilder {
   std::string input_path_;
   fluxion::ReactorRuntimeOptions runtime_options_;
   std::string optimization_level_;
-  double duration_seconds_ = 0.1;
+  std::optional<double> duration_seconds_;
   std::vector<ReactorInfo> reactors_;
 
   void validate() {
@@ -914,7 +914,7 @@ class NativeReactorBuilder {
       throw fluxion::DiagnosticError({"<module>", 1, 1}, "build requires at least one reactor");
     }
     const double period = common_period_seconds();
-    if (period <= 0.0 || duration_seconds_ <= 0.0) {
+    if (period <= 0.0 || (duration_seconds_ && *duration_seconds_ <= 0.0)) {
       throw fluxion::DiagnosticError({"<build>", 1, 1}, "build duration and reactor period must be positive");
     }
     reactors_.clear();
@@ -1056,16 +1056,21 @@ class NativeReactorBuilder {
 
   void emit_source(std::ostream& out) const {
     const double period = common_period_seconds();
-    const auto steps = std::max(1, static_cast<int>(std::floor((duration_seconds_ / period) + 0.000000001)));
     out << "#include \"runtime.h\"\n"
+        << "#include <atomic>\n"
+        << "#include <chrono>\n"
         << "#include <cmath>\n"
         << "#include <cstdint>\n"
+        << "#include <csignal>\n"
         << "#include <iomanip>\n"
         << "#include <iostream>\n"
         << "#include <sstream>\n"
-        << "#include <string>\n\n"
+        << "#include <string>\n"
+        << "#include <thread>\n"
         << "#include <utility>\n\n"
         << "namespace {\n"
+        << "std::atomic<bool> stop_requested{false};\n"
+        << "void request_stop(int) { stop_requested.store(true); }\n"
         << "std::string format_sim_time(double seconds) {\n"
         << "  const double millis = seconds * 1000.0;\n"
         << "  if (std::abs(millis - std::round(millis)) < 0.000000001) {\n"
@@ -1087,6 +1092,7 @@ class NativeReactorBuilder {
     }
     out << "}  // namespace\n\n"
         << "int main() {\n"
+        << "  std::signal(SIGINT, request_stop);\n"
         << "  fluxion::ReactorRuntimeOptions options;\n";
     if (runtime_options_.mode == fluxion::ReactorRuntimeMode::Serial) {
       out << "  options.mode = fluxion::ReactorRuntimeMode::Serial;\n";
@@ -1116,7 +1122,7 @@ class NativeReactorBuilder {
           << "    runtime.add_reactor(std::move(task));\n"
           << "  }\n";
     }
-    out << "  runtime.run_ticks(" << steps << ", [&](std::uint64_t, double time_seconds) {\n"
+    out << "  auto print_outputs = [&](std::uint64_t, double time_seconds) {\n"
         << "    std::cout << \"t=\" << format_sim_time(time_seconds);\n";
     const bool prefix_reactor = reactors_.size() > 1;
     for (std::size_t i = 0; i < reactors_.size(); ++i) {
@@ -1129,7 +1135,21 @@ class NativeReactorBuilder {
       }
     }
     out << "    std::cout << '\\n';\n"
-        << "  });\n"
+        << "  };\n";
+    if (duration_seconds_) {
+      const auto steps = std::max(1, static_cast<int>(std::floor((*duration_seconds_ / period) + 0.000000001)));
+      out << "  runtime.run_ticks(" << steps << ", print_outputs);\n";
+    } else {
+      out << "  auto next_tick = std::chrono::steady_clock::now();\n"
+          << "  const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>("
+          << std::setprecision(17) << period << "));\n"
+          << "  while (!stop_requested.load()) {\n"
+          << "    runtime.run_ticks(1, print_outputs);\n"
+          << "    next_tick += period;\n"
+          << "    std::this_thread::sleep_until(next_tick);\n"
+          << "  }\n";
+    }
+    out
         << "  return 0;\n"
         << "}\n";
   }
@@ -1863,6 +1883,7 @@ int main(int argc, char** argv) {
   std::string native_output_path;
   std::string native_optimization_level = "-O2";
   double sim_duration_seconds = 0.1;
+  std::optional<double> native_duration_seconds;
   fluxion::ReactorRuntimeOptions runtime_options;
   if (argc == 4 && std::string(argv[1]) == "run" && std::string(argv[2]) == "--visualize") {
     command = argv[1];
@@ -1903,7 +1924,7 @@ int main(int argc, char** argv) {
       } else if ((option == "--opt-level" || option == "--optimization-level") && i + 1 < argc) {
         native_optimization_level = parse_native_optimization_level(argv[++i]);
       } else if (option == "--for" && i + 1 < argc) {
-        sim_duration_seconds = parse_duration_seconds(argv[++i], {argv[2], 1, 1});
+        native_duration_seconds = parse_duration_seconds(argv[++i], {argv[2], 1, 1});
       } else if (option == "--runtime" && i + 1 < argc) {
         const std::string runtime = argv[++i];
         if (runtime == "serial") {
@@ -1942,7 +1963,7 @@ int main(int argc, char** argv) {
       return simulator.run(sim_duration_seconds);
     }
     if (command == "build") {
-      NativeReactorBuilder builder(checked, path, runtime_options, native_optimization_level, sim_duration_seconds);
+      NativeReactorBuilder builder(checked, path, runtime_options, native_optimization_level, native_duration_seconds);
       builder.build(native_output_path);
       std::cout << "built " << native_output_path << " " << native_optimization_level << '\n';
       return 0;

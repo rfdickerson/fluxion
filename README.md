@@ -97,7 +97,58 @@ directory:
 .\cmake-build-fluxion-vm\Debug\fluxion.exe check tests\valid\arithmetic.flx
 ```
 
-### 4. Run A Program
+### 4. Enable Editor Support
+
+Build the Fluxion language server:
+
+```bash
+cmake --build cmake-build-fluxion-vm --target fluxion-lsp
+```
+
+The server speaks LSP over stdio and publishes parser/type-checker diagnostics
+for `.flx` files. Point your editor's LSP client at the built binary:
+
+```text
+cmake-build-fluxion-vm/fluxion-lsp
+```
+
+On Windows with a multi-configuration generator, use the configuration
+subdirectory:
+
+```text
+cmake-build-fluxion-vm/Debug/fluxion-lsp.exe
+```
+
+Vim runtime files are provided under `editors/vim`. Enable filetype detection,
+syntax highlighting, and `:make` integration by adding this repository's Vim
+directory to your runtime path:
+
+```vim
+set runtimepath^=/path/to/fluxion/editors/vim
+filetype plugin indent on
+syntax on
+```
+
+For LSP diagnostics in Vim, install an LSP client and register `fluxion-lsp`.
+With `vim-lsp`:
+
+```vim
+if executable('/path/to/fluxion/cmake-build-fluxion-vm/fluxion-lsp')
+  augroup fluxion_lsp
+    autocmd!
+    autocmd User lsp_setup call lsp#register_server({
+          \ 'name': 'fluxion-lsp',
+          \ 'cmd': {server_info -> ['/path/to/fluxion/cmake-build-fluxion-vm/fluxion-lsp']},
+          \ 'allowlist': ['fluxion'],
+          \ })
+  augroup END
+endif
+```
+
+Without an LSP client, `:make` still runs `fluxion check %` and fills the
+quickfix list.
+
+### 5. Run A Program
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion run examples/runnable/cartpole_pid.flx
@@ -106,7 +157,7 @@ directory:
 The cartpole example simulates a small PID controller and prints the final pole
 angle and accumulated control effort.
 
-### 5. Run Physics Checks
+### 6. Run Physics Checks
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion physics-check examples/kalman_object_tracking.flx
@@ -115,7 +166,7 @@ angle and accumulated control effort.
 `physics-check` runs after normal parsing and type checking. It emits advisory
 domain diagnostics for physically modeled code without rejecting the program.
 
-### 6. Try The REPL
+### 7. Try The REPL
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion repl
@@ -141,7 +192,7 @@ Useful REPL commands:
 - `:clear` removes saved declarations.
 - `:quit` exits.
 
-### 7. Emit LLVM IR
+### 8. Emit LLVM IR
 
 ```bash
 ./cmake-build-fluxion-vm/fluxion emit-llvm tests/valid/arithmetic.flx
@@ -149,7 +200,7 @@ Useful REPL commands:
 
 This is useful when working on code generation or verifying the runtime ABI.
 
-### 8. Run The Test Suite
+### 9. Run The Test Suite
 
 ```bash
 ctest --test-dir cmake-build-fluxion-vm --output-on-failure
@@ -288,16 +339,20 @@ fluxion emit-llvm <file.flx>
 fluxion run <file.flx>
 fluxion run --visualize <file.flx>
 fluxion repl [script.repl]
+fluxion-lsp
 ```
 
 `run --visualize` enables the built-in cartpole visualizer hooks used by
 `tests/valid/cartpole_visualizer.flx`.
+
+`fluxion-lsp` runs as a stdio language server for editor integrations.
 
 ## Repository Layout
 
 ```text
 src/                 Compiler, type checker, LLVM codegen, JIT, and runtime
 docs/                v0.1 design documents and safety/control notes
+editors/vim/         Vim filetype, syntax, compiler, and LSP setup helpers
 examples/            Runnable Fluxion examples
 examples/cpp/        Comparable C++ control example
 tests/valid/         Programs expected to check or run

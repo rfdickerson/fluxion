@@ -1,0 +1,27 @@
+module Examples.ValidPidController
+
+reactor PidController(period = 10.ms)
+  parallel safe
+{
+  state setpoint: i32 = 1000
+  state measurement: i32 = 0
+  state error: i32 = 0
+  state integral: i32 = 0
+  state previous_error: i32 = 0
+  state derivative: i32 = 0
+  state raw_command: i32 = 0
+
+  output command: i32
+  output measured: i32
+
+  tick {
+    error = setpoint - measurement
+    integral = integral + error
+    derivative = error - previous_error
+    raw_command = (2 * error + integral + derivative) / 100
+    command = raw_command
+    measurement = measurement + command / 10
+    measured = measurement
+    previous_error = error
+  }
+}
