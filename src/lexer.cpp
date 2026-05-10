@@ -198,6 +198,9 @@ std::vector<Token> Lexer::lex() {
       case '/':
         tokens.push_back(make(TokenKind::Slash, "/", loc));
         break;
+      case '^':
+        tokens.push_back(make(TokenKind::Caret, "^", loc));
+        break;
       case '<':
         if (match('-')) {
           tokens.push_back(make(TokenKind::LeftArrow, "<-", loc));

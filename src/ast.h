@@ -208,6 +208,7 @@ struct ReactorPortDecl {
 struct ReactorStateDecl {
   std::string name;
   TypeSyntax type;
+  std::string initializer;
   std::string region;
   SourceLocation loc;
 };

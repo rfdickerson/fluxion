@@ -115,7 +115,9 @@ TypeSyntax Parser::parse_type_syntax_until_reactor_clause() {
   int angle_depth = 0;
   while (!check(TokenKind::End)) {
     if (angle_depth == 0 &&
-        (check(TokenKind::Capacity) || check(TokenKind::Overflow) || check(TokenKind::In) || check(TokenKind::RBrace))) {
+        (check(TokenKind::Capacity) || check(TokenKind::Overflow) || check(TokenKind::In) || check(TokenKind::Assign) ||
+         check(TokenKind::Input) || check(TokenKind::Output) || check(TokenKind::State) || check(TokenKind::On) ||
+         check(TokenKind::Tick) || check(TokenKind::RBrace))) {
       break;
     }
     Token token = peek();
@@ -206,6 +208,32 @@ ReactorDecl Parser::parse_reactor_decl() {
   ReactorDecl reactor;
   reactor.name = name.text;
   reactor.loc = name.loc;
+  if (match(TokenKind::LParen)) {
+    while (!check(TokenKind::RParen)) {
+      const Token& key = consume_name("expected reactor metadata key");
+      consume(TokenKind::Assign, "expected '=' after reactor metadata key");
+      if (key.text == "period" || key.text == "tick") {
+        reactor.meta.tick = parse_dotted_measure();
+      } else if (key.text == "deadline") {
+        reactor.meta.deadline = parse_dotted_measure();
+      } else if (key.text == "priority") {
+        const Token& priority = consume(TokenKind::Number, "expected numeric priority");
+        if (priority.text.find('.') != std::string::npos) {
+          throw DiagnosticError(priority.loc, "priority must be an integer");
+        }
+        reactor.meta.priority = std::stoi(priority.text);
+        reactor.meta.has_priority = true;
+      } else if (key.text == "phase") {
+        reactor.meta.phase = consume_name("expected phase name").text;
+      } else {
+        throw DiagnosticError(key.loc, "unknown reactor metadata key '" + key.text + "'");
+      }
+      if (!match(TokenKind::Comma)) {
+        break;
+      }
+    }
+    consume(TokenKind::RParen, "expected ')' after reactor metadata");
+  }
   while (!check(TokenKind::LBrace)) {
     if (match(TokenKind::Phase)) {
       reactor.meta.phase = consume_name("expected phase name").text;
@@ -237,8 +265,18 @@ ReactorDecl Parser::parse_reactor_decl() {
       reactor.states.push_back(parse_reactor_state());
     } else if (check(TokenKind::On)) {
       reactor.handlers.push_back(parse_reactor_handler());
+    } else if (check(TokenKind::Tick)) {
+      const Token& start = consume(TokenKind::Tick, "expected 'tick'");
+      ReactorHandlerDecl handler;
+      handler.target = "tick";
+      handler.loc = start.loc;
+      handler.body = collect_handler_body(start.loc.column);
+      if (handler.body.empty()) {
+        throw DiagnosticError(start.loc, "tick body must not be empty");
+      }
+      reactor.handlers.push_back(std::move(handler));
     } else {
-      throw DiagnosticError(peek().loc, "expected reactor input, output, state, or handler");
+      throw DiagnosticError(peek().loc, "expected reactor input, output, state, tick, or handler");
     }
   }
   consume(TokenKind::RBrace, "expected '}' after reactor");
@@ -259,7 +297,7 @@ ReactorPortDecl Parser::parse_reactor_port(ReactorPortDecl::Direction direction)
   } else if (match(TokenKind::Sampled)) {
     port.kind = ReactorPortDecl::Kind::Sampled;
   } else {
-    throw DiagnosticError(peek().loc, "expected stream or sampled port kind");
+    port.kind = ReactorPortDecl::Kind::Sampled;
   }
   port.type = parse_type_syntax_until_reactor_clause();
   while (check(TokenKind::Capacity) || check(TokenKind::Overflow)) {
@@ -284,14 +322,33 @@ ReactorStateDecl Parser::parse_reactor_state() {
   state.name = name.text;
   state.loc = start.loc;
   state.type = parse_type_syntax_until_reactor_clause();
-  consume(TokenKind::In, "expected 'in region' after state type");
-  consume(TokenKind::Region, "expected 'region' after 'in'");
-  state.region = consume_name("expected region name").text;
+  if (match(TokenKind::Assign)) {
+    const int item_column = start.loc.column;
+    while (!check(TokenKind::End) && !check(TokenKind::RBrace)) {
+      if (peek().loc.column <= item_column && is_reactor_item_start()) {
+        break;
+      }
+      Token token = peek();
+      ++pos_;
+      if (!state.initializer.empty()) {
+        state.initializer += token.kind == TokenKind::Dot || token.kind == TokenKind::Comma ||
+                                     token.kind == TokenKind::RParen || token.kind == TokenKind::RBracket
+                                 ? ""
+                                 : " ";
+      }
+      state.initializer += token.text;
+    }
+  }
+  if (match(TokenKind::In)) {
+    consume(TokenKind::Region, "expected 'region' after 'in'");
+    state.region = consume_name("expected region name").text;
+  }
   return state;
 }
 
 bool Parser::is_reactor_item_start() const {
-  return check(TokenKind::Input) || check(TokenKind::Output) || check(TokenKind::State) || check(TokenKind::On);
+  return check(TokenKind::Input) || check(TokenKind::Output) || check(TokenKind::State) || check(TokenKind::On) ||
+         check(TokenKind::Tick);
 }
 
 std::string Parser::collect_handler_body(int item_column) {
@@ -516,11 +573,21 @@ ExprPtr Parser::parse_term() {
 }
 
 ExprPtr Parser::parse_factor() {
-  auto expr = parse_unary();
+  auto expr = parse_power();
   while (check(TokenKind::Star) || check(TokenKind::Slash)) {
     Token op = peek();
     ++pos_;
-    expr = std::make_unique<BinaryExpr>(op.loc, op.text, std::move(expr), parse_unary());
+    expr = std::make_unique<BinaryExpr>(op.loc, op.text, std::move(expr), parse_power());
+  }
+  return expr;
+}
+
+ExprPtr Parser::parse_power() {
+  auto expr = parse_unary();
+  if (check(TokenKind::Caret)) {
+    Token op = peek();
+    ++pos_;
+    expr = std::make_unique<BinaryExpr>(op.loc, op.text, std::move(expr), parse_power());
   }
   return expr;
 }

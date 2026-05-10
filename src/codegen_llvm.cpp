@@ -5,6 +5,28 @@
 
 namespace fluxion {
 
+namespace {
+
+bool is_math_f64_unary(const std::string& name) {
+  return name == "sin" || name == "cos" || name == "tan" || name == "asin" || name == "acos" ||
+         name == "atan" || name == "sqrt" || name == "exp" || name == "log" || name == "log10";
+}
+
+double builtin_constant_value(const std::string& name) {
+  if (name == "pi") {
+    return 3.14159265358979323846;
+  }
+  if (name == "tau") {
+    return 6.28318530717958647692;
+  }
+  if (name == "e") {
+    return 2.71828182845904523536;
+  }
+  return 0.0;
+}
+
+}  // namespace
+
 LlvmCodeGen::LlvmCodeGen(const CheckedProgram& program) : program_(program) {
   context_ = std::make_unique<llvm::LLVMContext>();
   module_ = std::make_unique<llvm::Module>("fluxion", *context_);
@@ -43,6 +65,16 @@ void LlvmCodeGen::declare_runtime() {
       llvm::FunctionType::get(unit_ty, {string_ty}, false), llvm::Function::ExternalLinkage, "fluxion_print_string", module_.get());
   functions_["print_matrix"] = llvm::Function::Create(
       llvm::FunctionType::get(unit_ty, {matrix_ty}, false), llvm::Function::ExternalLinkage, "fluxion_print_matrix", module_.get());
+  functions_["pow_i32"] = llvm::Function::Create(
+      llvm::FunctionType::get(i32_ty, {i32_ty, i32_ty}, false), llvm::Function::ExternalLinkage, "fluxion_pow_i32", module_.get());
+  functions_["pow_f64"] = llvm::Function::Create(
+      llvm::FunctionType::get(f64_ty, {f64_ty, f64_ty}, false), llvm::Function::ExternalLinkage, "fluxion_pow_f64", module_.get());
+  for (const std::string name : {"sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "exp", "log", "log10"}) {
+    functions_["math_" + name] = llvm::Function::Create(
+        llvm::FunctionType::get(f64_ty, {f64_ty}, false), llvm::Function::ExternalLinkage, "fluxion_math_" + name, module_.get());
+  }
+  functions_["math_atan2"] = llvm::Function::Create(
+      llvm::FunctionType::get(f64_ty, {f64_ty, f64_ty}, false), llvm::Function::ExternalLinkage, "fluxion_math_atan2", module_.get());
   functions_["matrix_create"] = llvm::Function::Create(
       llvm::FunctionType::get(matrix_ty, {i32_ty, i32_ty}, false), llvm::Function::ExternalLinkage, "fluxion_matrix_create", module_.get());
   functions_["matrix_set"] = llvm::Function::Create(
@@ -228,6 +260,9 @@ llvm::Value* LlvmCodeGen::codegen_expr(Expr& expr, std::unordered_map<std::strin
   if (auto* e = dynamic_cast<VarExpr*>(&expr)) {
     const auto it = locals.find(e->name);
     if (it == locals.end()) {
+      if (e->name == "pi" || e->name == "tau" || e->name == "e") {
+        return llvm::ConstantFP::get(llvm_type(TypeRef::f64()), builtin_constant_value(e->name));
+      }
       throw DiagnosticError(e->loc, "unknown local '" + e->name + "'");
     }
     return builder_->CreateLoad(llvm_type(it->second.type), it->second.storage, e->name);
@@ -254,6 +289,7 @@ llvm::Value* LlvmCodeGen::codegen_expr(Expr& expr, std::unordered_map<std::strin
     if (e->op == "-") return f64 ? builder_->CreateFSub(lhs, rhs, "subtmp") : builder_->CreateSub(lhs, rhs, "subtmp");
     if (e->op == "*") return f64 ? builder_->CreateFMul(lhs, rhs, "multmp") : builder_->CreateMul(lhs, rhs, "multmp");
     if (e->op == "/") return f64 ? builder_->CreateFDiv(lhs, rhs, "divtmp") : builder_->CreateSDiv(lhs, rhs, "divtmp");
+    if (e->op == "^") return builder_->CreateCall(function(f64 ? "pow_f64" : "pow_i32"), {lhs, rhs}, "powtmp");
     if (f64) {
       llvm::CmpInst::Predicate pred = llvm::CmpInst::FCMP_OEQ;
       if (e->op == "<") pred = llvm::CmpInst::FCMP_OLT;
@@ -275,6 +311,44 @@ llvm::Value* LlvmCodeGen::codegen_expr(Expr& expr, std::unordered_map<std::strin
     std::vector<llvm::Value*> args;
     for (auto& arg : e->args) {
       args.push_back(codegen_expr(*arg, locals));
+    }
+    if (is_math_f64_unary(e->callee)) {
+      return builder_->CreateCall(function("math_" + e->callee), args, e->callee + "tmp");
+    }
+    if (e->callee == "atan2") {
+      return builder_->CreateCall(function("math_atan2"), args, "atan2tmp");
+    }
+    if (e->callee == "abs") {
+      const bool f64 = expr.inferred.kind != TypeKind::I32;
+      llvm::Value* zero = f64
+                              ? static_cast<llvm::Value*>(llvm::ConstantFP::get(llvm_type(TypeRef::f64()), 0.0))
+                              : static_cast<llvm::Value*>(llvm::ConstantInt::get(llvm_type(TypeRef::i32()), 0, true));
+      llvm::Value* is_negative = f64
+                                     ? builder_->CreateFCmpOLT(args[0], zero, "absneg")
+                                     : builder_->CreateICmpSLT(args[0], zero, "absneg");
+      llvm::Value* negated = f64 ? builder_->CreateFNeg(args[0], "absval") : builder_->CreateNeg(args[0], "absval");
+      return builder_->CreateSelect(is_negative, negated, args[0], "abstmp");
+    }
+    if (e->callee == "min" || e->callee == "max") {
+      const bool f64 = expr.inferred.kind != TypeKind::I32;
+      llvm::Value* choose_lhs = nullptr;
+      if (e->callee == "min") {
+        choose_lhs = f64 ? builder_->CreateFCmpOLT(args[0], args[1], "mintest")
+                         : builder_->CreateICmpSLT(args[0], args[1], "mintest");
+      } else {
+        choose_lhs = f64 ? builder_->CreateFCmpOGT(args[0], args[1], "maxtest")
+                         : builder_->CreateICmpSGT(args[0], args[1], "maxtest");
+      }
+      return builder_->CreateSelect(choose_lhs, args[0], args[1], e->callee + "tmp");
+    }
+    if (e->callee == "clamp") {
+      const bool f64 = expr.inferred.kind != TypeKind::I32;
+      llvm::Value* below = f64 ? builder_->CreateFCmpOLT(args[0], args[1], "clamplo")
+                               : builder_->CreateICmpSLT(args[0], args[1], "clamplo");
+      llvm::Value* above = f64 ? builder_->CreateFCmpOGT(args[0], args[2], "clamphi")
+                               : builder_->CreateICmpSGT(args[0], args[2], "clamphi");
+      llvm::Value* lo_or_value = builder_->CreateSelect(below, args[1], args[0], "clampmintmp");
+      return builder_->CreateSelect(above, args[2], lo_or_value, "clamptmp");
     }
     return builder_->CreateCall(function(e->callee), args, expr.inferred.kind == TypeKind::Unit ? "unittmp" : "calltmp");
   }

@@ -1,0 +1,26 @@
+module Tests.MathBuiltins
+
+func main() -> Int =
+  if sin(pi / 2.0) > 0.999 then
+    if cos(0.0) == 1.0 then
+      if tan(0.0) == 0.0 then
+        if atan2(1.0, 0.0) > 1.5 then
+          if sqrt(9.0) == 3.0 then
+            if abs(-3) == 3 then
+              if min(2, 5) == 2 then
+                if max(2.0, 5.0) == 5.0 then
+                  if clamp(12, 0, 10) == 10 then
+                    if log10(100.0) == 2.0 then
+                      if exp(1.0) > 2.7 then
+                        if tau > 6.28 then 0 else 1
+                      else 1
+                    else 1
+                  else 1
+                else 1
+              else 1
+            else 1
+          else 1
+        else 1
+      else 1
+    else 1
+  else 1

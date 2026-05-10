@@ -3,4 +3,12 @@ func add(a: Int, b: Int) -> Int = a + b
 add(20, 22)
 if add(1, 1) == 2 then true else false
 "hello fluxion"
+a = 3
+a^2
+2^3^2
+2.0^0.5
+sin(pi / 2.0)
+sqrt(9.0)
+abs(-3)
+clamp(12, 0, 10)
 :quit

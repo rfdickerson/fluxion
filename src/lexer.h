@@ -25,6 +25,7 @@ enum class TokenKind {
   Minus,
   Star,
   Slash,
+  Caret,
   Less,
   Greater,
   LessEqual,

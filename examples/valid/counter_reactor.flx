@@ -1,0 +1,11 @@
+module Examples.ValidCounterReactor
+
+reactor Counter(period = 10.ms) {
+  state x: i32 = 0
+  output y: i32
+
+  tick {
+    x = x + 1
+    y = x
+  }
+}

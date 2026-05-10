@@ -4,6 +4,23 @@
 
 namespace fluxion {
 
+namespace {
+
+bool is_math_f64_unary(const std::string& name) {
+  return name == "sin" || name == "cos" || name == "tan" || name == "asin" || name == "acos" ||
+         name == "atan" || name == "sqrt" || name == "exp" || name == "log" || name == "log10";
+}
+
+bool is_builtin_constant(const std::string& name) {
+  return name == "pi" || name == "tau" || name == "e";
+}
+
+bool is_matching_numeric(const TypeRef& lhs, const TypeRef& rhs) {
+  return lhs == rhs && lhs.is_numeric();
+}
+
+}  // namespace
+
 TypeChecker::TypeChecker(Module module) : module_(std::move(module)) {}
 
 CheckedProgram TypeChecker::check() {
@@ -81,20 +98,11 @@ void TypeChecker::check_reactors() {
     if (!reactor_names.insert(reactor.name).second) {
       throw DiagnosticError(reactor.loc, "duplicate reactor '" + reactor.name + "'");
     }
-    if (reactor.meta.phase.empty()) {
-      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a phase");
-    }
-    if (!phase_names.empty() && !phase_names.count(reactor.meta.phase)) {
+    if (!reactor.meta.phase.empty() && !phase_names.empty() && !phase_names.count(reactor.meta.phase)) {
       throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' uses unknown phase '" + reactor.meta.phase + "'");
     }
     if (reactor.meta.tick.empty()) {
       throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a tick rate");
-    }
-    if (reactor.meta.deadline.empty()) {
-      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a deadline");
-    }
-    if (!reactor.meta.has_priority) {
-      throw DiagnosticError(reactor.loc, "reactor '" + reactor.name + "' must declare a priority");
     }
     std::unordered_set<std::string> names;
     for (const auto& port : reactor.ports) {
@@ -121,7 +129,7 @@ void TypeChecker::check_reactors() {
       if (!names.insert(state.name).second) {
         throw DiagnosticError(state.loc, "duplicate reactor member '" + state.name + "'");
       }
-      if (state.region.empty()) {
+      if (state.region.empty() && state.initializer.empty()) {
         throw DiagnosticError(state.loc, "reactor state '" + state.name + "' must declare a region");
       }
     }
@@ -245,9 +253,14 @@ TypeRef TypeChecker::check_expr(Expr& expr, std::unordered_map<std::string, Type
   } else if (auto* e = dynamic_cast<VarExpr*>(&expr)) {
     const auto it = locals.find(e->name);
     if (it == locals.end()) {
-      throw DiagnosticError(e->loc, "unknown variable '" + e->name + "'");
+      if (is_builtin_constant(e->name)) {
+        expr.inferred = TypeRef::f64();
+      } else {
+        throw DiagnosticError(e->loc, "unknown variable '" + e->name + "'");
+      }
+    } else {
+      expr.inferred = it->second;
     }
-    expr.inferred = it->second;
   } else if (auto* e = dynamic_cast<BinaryExpr*>(&expr)) {
     const TypeRef lhs = check_expr(*e->lhs, locals);
     const TypeRef rhs = check_expr(*e->rhs, locals);
@@ -263,6 +276,59 @@ TypeRef TypeChecker::check_expr(Expr& expr, std::unordered_map<std::string, Type
       expr.inferred = lhs;
     }
   } else if (auto* e = dynamic_cast<CallExpr*>(&expr)) {
+    if (is_math_f64_unary(e->callee)) {
+      if (e->args.size() != 1) {
+        throw DiagnosticError(e->loc, "wrong argument count for '" + e->callee + "'");
+      }
+      expect(check_expr(*e->args[0], locals), TypeRef::f64(), e->args[0]->loc);
+      expr.inferred = TypeRef::f64();
+      return expr.inferred;
+    }
+    if (e->callee == "atan2") {
+      if (e->args.size() != 2) {
+        throw DiagnosticError(e->loc, "wrong argument count for 'atan2'");
+      }
+      expect(check_expr(*e->args[0], locals), TypeRef::f64(), e->args[0]->loc);
+      expect(check_expr(*e->args[1], locals), TypeRef::f64(), e->args[1]->loc);
+      expr.inferred = TypeRef::f64();
+      return expr.inferred;
+    }
+    if (e->callee == "abs") {
+      if (e->args.size() != 1) {
+        throw DiagnosticError(e->loc, "wrong argument count for 'abs'");
+      }
+      const TypeRef arg = check_expr(*e->args[0], locals);
+      if (!arg.is_numeric()) {
+        throw DiagnosticError(e->args[0]->loc, "abs requires an Int or Double argument");
+      }
+      expr.inferred = arg;
+      return expr.inferred;
+    }
+    if (e->callee == "min" || e->callee == "max") {
+      if (e->args.size() != 2) {
+        throw DiagnosticError(e->loc, "wrong argument count for '" + e->callee + "'");
+      }
+      const TypeRef lhs = check_expr(*e->args[0], locals);
+      const TypeRef rhs = check_expr(*e->args[1], locals);
+      if (!is_matching_numeric(lhs, rhs)) {
+        throw DiagnosticError(e->loc, e->callee + " requires matching Int or Double arguments");
+      }
+      expr.inferred = lhs;
+      return expr.inferred;
+    }
+    if (e->callee == "clamp") {
+      if (e->args.size() != 3) {
+        throw DiagnosticError(e->loc, "wrong argument count for 'clamp'");
+      }
+      const TypeRef value = check_expr(*e->args[0], locals);
+      const TypeRef lo = check_expr(*e->args[1], locals);
+      const TypeRef hi = check_expr(*e->args[2], locals);
+      if (!is_matching_numeric(value, lo) || !is_matching_numeric(value, hi)) {
+        throw DiagnosticError(e->loc, "clamp requires matching Int or Double arguments");
+      }
+      expr.inferred = value;
+      return expr.inferred;
+    }
     const auto it = functions_.find(e->callee);
     if (it == functions_.end()) {
       if (e->callee == "print_f64") {

@@ -1,0 +1,34 @@
+import Fluxion.Control.PID
+import Fluxion.Sim.Plant
+import Fluxion.Time
+plant = Plant.first_order(
+  gain: 1.0,
+  tau: 0.8.s,
+  initial: 0.0
+)
+plant
+pid = PID.Controller(
+  kp: 2.0,
+  ki: 0.4,
+  kd: 0.1,
+  output_limits: (-10.0, 10.0)
+)
+pid
+setpoint = 5.0
+setpoint
+result = simulate 5.s step 10.ms {
+  measurement = plant.output
+  control = PID.update(pid, setpoint - measurement, dt)
+  plant <- Plant.step(plant, control, dt)
+  emit { time: now, y: plant.output, u: control }
+}
+result
+result.last
+plot result.time result.y
+result.every(500.ms)
+check pid
+pid = pid.with(anti_windup: PID.clamp_integrator)
+result = rerun
+check pid
+reactorize pid as TemperatureController
+:quit

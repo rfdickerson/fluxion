@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cmath>
 #include <fstream>
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -103,6 +105,71 @@ extern "C" int fluxion_print_bool(bool value) {
 extern "C" int fluxion_print_string(const char* value) {
   std::cout << style_text(value == nullptr ? "" : value, "1;33") << '\n';
   return 0;
+}
+
+extern "C" int fluxion_pow_i32(int base, int exponent) {
+  if (exponent < 0) {
+    return 0;
+  }
+  int result = 1;
+  while (exponent > 0) {
+    if ((exponent & 1) != 0) {
+      result *= base;
+    }
+    exponent >>= 1;
+    if (exponent > 0) {
+      base *= base;
+    }
+  }
+  return result;
+}
+
+extern "C" double fluxion_pow_f64(double base, double exponent) {
+  return std::pow(base, exponent);
+}
+
+extern "C" double fluxion_math_sin(double value) {
+  return std::sin(value);
+}
+
+extern "C" double fluxion_math_cos(double value) {
+  return std::cos(value);
+}
+
+extern "C" double fluxion_math_tan(double value) {
+  return std::tan(value);
+}
+
+extern "C" double fluxion_math_asin(double value) {
+  return std::asin(value);
+}
+
+extern "C" double fluxion_math_acos(double value) {
+  return std::acos(value);
+}
+
+extern "C" double fluxion_math_atan(double value) {
+  return std::atan(value);
+}
+
+extern "C" double fluxion_math_atan2(double y, double x) {
+  return std::atan2(y, x);
+}
+
+extern "C" double fluxion_math_sqrt(double value) {
+  return std::sqrt(value);
+}
+
+extern "C" double fluxion_math_exp(double value) {
+  return std::exp(value);
+}
+
+extern "C" double fluxion_math_log(double value) {
+  return std::log(value);
+}
+
+extern "C" double fluxion_math_log10(double value) {
+  return std::log10(value);
 }
 
 namespace {
@@ -458,6 +525,264 @@ void set_cartpole_visualizer_enabled(bool enabled) {
     disable_raw_mode();
   }
 #endif
+}
+
+ReactorArena::ReactorArena(std::size_t capacity_bytes) : storage_(capacity_bytes, 0) {}
+
+void* ReactorArena::allocate(std::size_t bytes, std::size_t alignment) {
+  if (bytes == 0) {
+    return nullptr;
+  }
+  if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    throw std::runtime_error("reactor arena alignment must be a power of two");
+  }
+  const std::size_t aligned = (offset_ + alignment - 1) & ~(alignment - 1);
+  if (aligned > storage_.size() || bytes > storage_.size() - aligned) {
+    throw std::runtime_error("reactor arena exhausted");
+  }
+  offset_ = aligned + bytes;
+  return storage_.data() + aligned;
+}
+
+void ReactorArena::reset() {
+  offset_ = 0;
+}
+
+std::size_t ReactorArena::used() const {
+  return offset_;
+}
+
+std::size_t ReactorArena::capacity() const {
+  return storage_.size();
+}
+
+namespace {
+
+struct ScheduledReactor {
+  ReactorTask task;
+  std::size_t sequence = 0;
+  ReactorArena reactor_arena;
+  ReactorArena frame_arena;
+};
+
+bool reactor_precedes(const ScheduledReactor& lhs, const ScheduledReactor& rhs) {
+  if (lhs.task.phase != rhs.task.phase) {
+    return lhs.task.phase < rhs.task.phase;
+  }
+  if (lhs.task.priority != rhs.task.priority) {
+    return lhs.task.priority > rhs.task.priority;
+  }
+  return lhs.sequence < rhs.sequence;
+}
+
+class BoundedWorkerPool {
+ public:
+  BoundedWorkerPool(std::size_t workers, std::size_t max_jobs) {
+    queue_.reserve(max_jobs);
+    threads_.reserve(workers);
+    for (std::size_t i = 0; i < workers; ++i) {
+      threads_.emplace_back([this] { worker_loop(); });
+    }
+  }
+
+  ~BoundedWorkerPool() {
+    {
+      std::lock_guard<std::mutex> guard(lock_);
+      stopping_ = true;
+    }
+    ready_.notify_all();
+    for (auto& thread : threads_) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
+  }
+
+  void run(const std::vector<std::function<void()>>& jobs, std::size_t first, std::size_t last) {
+    if (first >= last) {
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> guard(lock_);
+      remaining_ = last - first;
+      failure_ = nullptr;
+      queue_.clear();
+      queue_head_ = 0;
+      for (std::size_t i = first; i < last; ++i) {
+        queue_.push_back(&jobs[i]);
+      }
+    }
+    ready_.notify_all();
+    std::unique_lock<std::mutex> guard(lock_);
+    done_.wait(guard, [this] { return remaining_ == 0; });
+    if (failure_ != nullptr) {
+      std::rethrow_exception(failure_);
+    }
+  }
+
+ private:
+  void worker_loop() {
+    for (;;) {
+      const std::function<void()>* job = nullptr;
+      {
+        std::unique_lock<std::mutex> guard(lock_);
+        ready_.wait(guard, [this] { return stopping_ || queue_head_ < queue_.size(); });
+        if (stopping_ && queue_head_ >= queue_.size()) {
+          return;
+        }
+        job = queue_[queue_head_++];
+      }
+      try {
+        (*job)();
+      } catch (...) {
+        std::lock_guard<std::mutex> guard(lock_);
+        if (failure_ == nullptr) {
+          failure_ = std::current_exception();
+        }
+      }
+      {
+        std::lock_guard<std::mutex> guard(lock_);
+        --remaining_;
+        if (remaining_ == 0) {
+          done_.notify_one();
+        }
+      }
+    }
+  }
+
+  std::vector<std::thread> threads_;
+  std::mutex lock_;
+  std::condition_variable ready_;
+  std::condition_variable done_;
+  std::vector<const std::function<void()>*> queue_;
+  std::size_t queue_head_ = 0;
+  std::size_t remaining_ = 0;
+  bool stopping_ = false;
+  std::exception_ptr failure_;
+};
+
+std::size_t choose_worker_count(const ReactorRuntimeOptions& options) {
+  if (options.mode == ReactorRuntimeMode::Serial) {
+    return 0;
+  }
+  if (options.worker_count > 0) {
+    return options.worker_count;
+  }
+  const unsigned hardware = std::thread::hardware_concurrency();
+  return std::max<std::size_t>(1, hardware == 0 ? 1 : hardware - 1);
+}
+
+}  // namespace
+
+struct DeterministicReactorRuntime::Impl {
+  explicit Impl(ReactorRuntimeOptions runtime_options)
+      : options(std::move(runtime_options)), worker_count(choose_worker_count(options)) {
+    reactors.reserve(options.max_reactors);
+    jobs.reserve(options.max_reactors);
+    if (worker_count > 0) {
+      workers = std::make_unique<BoundedWorkerPool>(worker_count, options.max_reactors);
+    }
+  }
+
+  ReactorRuntimeOptions options;
+  std::size_t worker_count = 0;
+  std::vector<ScheduledReactor> reactors;
+  std::vector<std::function<void()>> jobs;
+  std::unique_ptr<BoundedWorkerPool> workers;
+  bool initialized = false;
+};
+
+DeterministicReactorRuntime::DeterministicReactorRuntime(ReactorRuntimeOptions options)
+    : impl_(std::make_unique<Impl>(std::move(options))) {}
+
+DeterministicReactorRuntime::~DeterministicReactorRuntime() = default;
+
+void DeterministicReactorRuntime::add_reactor(ReactorTask task) {
+  if (impl_->initialized) {
+    throw std::runtime_error("cannot add reactor after runtime initialization");
+  }
+  if (impl_->reactors.size() >= impl_->options.max_reactors) {
+    throw std::runtime_error("reactor runtime capacity exceeded");
+  }
+  if (!task.tick) {
+    throw std::runtime_error("reactor '" + task.name + "' has no tick handler");
+  }
+  ScheduledReactor scheduled{std::move(task),
+                             impl_->reactors.size(),
+                             ReactorArena(impl_->options.reactor_arena_bytes),
+                             ReactorArena(impl_->options.frame_arena_bytes)};
+  impl_->reactors.push_back(std::move(scheduled));
+}
+
+void DeterministicReactorRuntime::initialize() {
+  std::stable_sort(impl_->reactors.begin(), impl_->reactors.end(), reactor_precedes);
+  for (std::size_t i = 0; i < impl_->reactors.size(); ++i) {
+    ScheduledReactor& reactor = impl_->reactors[i];
+    if (!reactor.task.initialize) {
+      continue;
+    }
+    ReactorContext context{i, 0, 0.0, &reactor.reactor_arena, &reactor.frame_arena};
+    reactor.task.initialize(context);
+  }
+  impl_->initialized = true;
+}
+
+void DeterministicReactorRuntime::run_ticks(std::uint64_t count,
+                                            const std::function<void(std::uint64_t, double)>& after_tick) {
+  if (!impl_->initialized) {
+    initialize();
+  }
+  for (std::uint64_t tick = 0; tick < count; ++tick) {
+    impl_->jobs.clear();
+    for (std::size_t i = 0; i < impl_->reactors.size(); ++i) {
+      ScheduledReactor& reactor = impl_->reactors[i];
+      reactor.frame_arena.reset();
+      const double logical_time = reactor.task.period_seconds > 0.0
+                                      ? static_cast<double>(tick) * reactor.task.period_seconds
+                                      : static_cast<double>(tick);
+      impl_->jobs.emplace_back([tick, logical_time, i, &reactor] {
+        ReactorContext context{i, tick, logical_time, &reactor.reactor_arena, &reactor.frame_arena};
+        reactor.task.tick(context);
+      });
+    }
+
+    std::size_t begin = 0;
+    while (begin < impl_->reactors.size()) {
+      const bool parallel = impl_->reactors[begin].task.parallel_safe && impl_->workers != nullptr;
+      std::size_t end = begin + 1;
+      if (parallel) {
+        while (end < impl_->reactors.size() && impl_->reactors[end].task.parallel_safe &&
+               impl_->reactors[end].task.phase == impl_->reactors[begin].task.phase) {
+          ++end;
+        }
+        impl_->workers->run(impl_->jobs, begin, end);
+      } else {
+        impl_->jobs[begin]();
+      }
+      begin = end;
+    }
+
+    for (std::size_t i = 0; i < impl_->reactors.size(); ++i) {
+      ScheduledReactor& reactor = impl_->reactors[i];
+      if (!reactor.task.commit) {
+        continue;
+      }
+      const double logical_time = reactor.task.period_seconds > 0.0
+                                      ? static_cast<double>(tick) * reactor.task.period_seconds
+                                      : static_cast<double>(tick);
+      ReactorContext context{i, tick, logical_time, &reactor.reactor_arena, &reactor.frame_arena};
+      reactor.task.commit(context);
+    }
+    if (after_tick) {
+      after_tick(tick, impl_->reactors.empty() || impl_->reactors.front().task.period_seconds <= 0.0
+                           ? static_cast<double>(tick)
+                           : static_cast<double>(tick) * impl_->reactors.front().task.period_seconds);
+    }
+  }
+}
+
+std::size_t DeterministicReactorRuntime::reactor_count() const {
+  return impl_->reactors.size();
 }
 
 }  // namespace fluxion

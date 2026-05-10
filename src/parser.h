@@ -45,6 +45,7 @@ class Parser {
   ExprPtr parse_comparison();
   ExprPtr parse_term();
   ExprPtr parse_factor();
+  ExprPtr parse_power();
   ExprPtr parse_unary();
   ExprPtr parse_postfix();
   ExprPtr parse_primary();

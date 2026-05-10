@@ -37,6 +37,32 @@ int run_jit(GeneratedModule generated) {
       llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_print_string), llvm::JITSymbolFlags::Exported);
   symbols[mangle("fluxion_print_matrix")] =
       llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_print_matrix), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_pow_i32")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_pow_i32), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_pow_f64")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_pow_f64), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_sin")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_sin), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_cos")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_cos), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_tan")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_tan), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_asin")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_asin), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_acos")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_acos), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_atan")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_atan), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_atan2")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_atan2), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_sqrt")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_sqrt), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_exp")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_exp), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_log")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_log), llvm::JITSymbolFlags::Exported);
+  symbols[mangle("fluxion_math_log10")] =
+      llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_math_log10), llvm::JITSymbolFlags::Exported);
   symbols[mangle("fluxion_matrix_create")] =
       llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr::fromPtr(&fluxion_matrix_create), llvm::JITSymbolFlags::Exported);
   symbols[mangle("fluxion_matrix_set")] =
